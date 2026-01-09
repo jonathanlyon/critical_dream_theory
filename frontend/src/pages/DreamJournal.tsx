@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 // Helper to get relative dates for mock data
@@ -79,6 +79,56 @@ const MOCK_DREAMS = [
     excerpt: 'Returned to the garden where I played as a child, but everything was giant-sized. Flowers towered like trees...',
     thumbnailGradient: 'from-green-600 to-emerald-700',
     thumbnailIcon: '🌸'
+  },
+  {
+    id: '7',
+    title: 'The Endless Library',
+    dateObj: getRelativeDate(50),
+    dreamType: 'Generative',
+    emotionalTone: 'Neutral',
+    excerpt: 'Wandering through a library with infinite shelves. Each book contained dreams I had forgotten...',
+    thumbnailGradient: 'from-brown-600 to-amber-700',
+    thumbnailIcon: '📚'
+  },
+  {
+    id: '8',
+    title: 'Dancing with Shadows',
+    dateObj: getRelativeDate(55),
+    dreamType: 'Resolution',
+    emotionalTone: 'Mixed',
+    excerpt: 'Shadow figures emerged from the walls and invited me to dance. Their movements were graceful yet unsettling...',
+    thumbnailGradient: 'from-slate-600 to-gray-700',
+    thumbnailIcon: '💃'
+  },
+  {
+    id: '9',
+    title: 'The Glass City',
+    dateObj: getRelativeDate(60),
+    dreamType: 'Lucid',
+    emotionalTone: 'Positive',
+    excerpt: 'A city made entirely of glass sparkled in the sunlight. I realized I was dreaming and began to fly between the towers...',
+    thumbnailGradient: 'from-sky-600 to-blue-700',
+    thumbnailIcon: '🏙️'
+  },
+  {
+    id: '10',
+    title: 'Underwater Kingdom',
+    dateObj: getRelativeDate(65),
+    dreamType: 'Continuation',
+    emotionalTone: 'Positive',
+    excerpt: 'I could breathe underwater and discovered an ancient kingdom ruled by wise sea creatures...',
+    thumbnailGradient: 'from-teal-600 to-cyan-700',
+    thumbnailIcon: '🐠'
+  },
+  {
+    id: '11',
+    title: 'The Incredibly Long Dream Title That Keeps Going and Going Until It Reaches Over One Hundred Characters to Test Truncation',
+    dateObj: getRelativeDate(70),
+    dreamType: 'Lucid',
+    emotionalTone: 'Positive',
+    excerpt: 'This dream was so complex that even its title needs to be truncated when displayed in the journal card view to ensure the layout does not break...',
+    thumbnailGradient: 'from-violet-600 to-purple-700',
+    thumbnailIcon: '✨'
   }
 ]
 
@@ -125,7 +175,14 @@ export default function DreamJournal() {
   const [dateFilter, setDateFilter] = useState(searchParams.get('dateRange') || '')
   const [typeFilter, setTypeFilter] = useState(searchParams.get('dreamType') || '')
   const [toneFilter, setToneFilter] = useState(searchParams.get('tone') || '')
+  const [currentPage, setCurrentPage] = useState(() => {
+    const page = parseInt(searchParams.get('page') || '1', 10)
+    return isNaN(page) || page < 1 ? 1 : page
+  })
   const [showArchived, setShowArchived] = useState(false)
+
+  // Pagination config
+  const DREAMS_PER_PAGE = 6
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
@@ -133,15 +190,28 @@ export default function DreamJournal() {
   const [dreams, setDreams] = useState(MOCK_DREAMS)
   const [archivedDreams, setArchivedDreams] = useState<typeof MOCK_DREAMS>([])
 
-  // Sync URL params when filters change
+  // Sync URL params when filters or page change
   useEffect(() => {
     const params = new URLSearchParams()
     if (searchQuery) params.set('q', searchQuery)
     if (dateFilter) params.set('dateRange', dateFilter)
     if (typeFilter) params.set('dreamType', typeFilter)
     if (toneFilter) params.set('tone', toneFilter)
+    if (currentPage > 1) params.set('page', currentPage.toString())
     setSearchParams(params, { replace: true })
-  }, [searchQuery, dateFilter, typeFilter, toneFilter, setSearchParams])
+  }, [searchQuery, dateFilter, typeFilter, toneFilter, currentPage, setSearchParams])
+
+  // Track if this is the initial mount
+  const isInitialMount = useRef(true)
+
+  // Reset to page 1 when filters change (but not on initial mount)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    setCurrentPage(1)
+  }, [searchQuery, dateFilter, typeFilter, toneFilter])
 
   // Archive a dream (soft delete)
   const archiveDream = (dreamId: string) => {
@@ -221,6 +291,39 @@ export default function DreamJournal() {
   }
 
   const hasActiveFilters = searchQuery || dateFilter || typeFilter || toneFilter
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredDreams.length / DREAMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * DREAMS_PER_PAGE
+  const paginatedDreams = filteredDreams.slice(startIndex, startIndex + DREAMS_PER_PAGE)
+
+  // Navigation functions
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
+
+  const goToPreviousPage = () => goToPage(currentPage - 1)
+  const goToNextPage = () => goToPage(currentPage + 1)
+
+  // Generate page numbers to show
+  const getPageNumbers = () => {
+    const pages: (number | 'ellipsis')[] = []
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i)
+    } else {
+      pages.push(1)
+      if (currentPage > 3) pages.push('ellipsis')
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+        pages.push(i)
+      }
+      if (currentPage < totalPages - 2) pages.push('ellipsis')
+      pages.push(totalPages)
+    }
+    return pages
+  }
 
   return (
     <div className="flex-1 p-6">
@@ -398,7 +501,7 @@ export default function DreamJournal() {
                 </div>
               ))
             )
-          ) : filteredDreams.length === 0 ? (
+          ) : paginatedDreams.length === 0 ? (
             /* Empty State */
             <div className="col-span-full text-center py-16">
               <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-dream-card flex items-center justify-center">
@@ -440,7 +543,7 @@ export default function DreamJournal() {
             </div>
           ) : (
             /* Dream Cards */
-            filteredDreams.map((dream) => (
+            paginatedDreams.map((dream) => (
               <div
                 key={dream.id}
                 className="card-hover group cursor-pointer relative"
@@ -530,15 +633,45 @@ export default function DreamJournal() {
           )}
         </div>
 
-        {/* Pagination (shown when there are many dreams) */}
-        {filteredDreams.length > 6 && (
+        {/* Pagination (shown when there are multiple pages) */}
+        {totalPages > 1 && (
           <div className="flex justify-center mt-8">
-            <nav className="flex gap-2" aria-label="Pagination">
-              <button className="btn-ghost px-3 py-1 touch-target">Previous</button>
-              <button className="btn-primary px-3 py-1 touch-target">1</button>
-              <button className="btn-ghost px-3 py-1 touch-target">2</button>
-              <button className="btn-ghost px-3 py-1 touch-target">3</button>
-              <button className="btn-ghost px-3 py-1 touch-target">Next</button>
+            <nav className="flex gap-2 items-center" aria-label="Pagination">
+              <button
+                className="btn-ghost px-3 py-1 touch-target disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={goToPreviousPage}
+                disabled={currentPage === 1}
+                aria-label="Go to previous page"
+              >
+                Previous
+              </button>
+              {getPageNumbers().map((page, index) =>
+                page === 'ellipsis' ? (
+                  <span key={`ellipsis-${index}`} className="px-2 text-gray-500">...</span>
+                ) : (
+                  <button
+                    key={page}
+                    className={`px-3 py-1 touch-target rounded-lg ${
+                      currentPage === page
+                        ? 'btn-primary'
+                        : 'btn-ghost'
+                    }`}
+                    onClick={() => goToPage(page)}
+                    aria-label={`Go to page ${page}`}
+                    aria-current={currentPage === page ? 'page' : undefined}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+              <button
+                className="btn-ghost px-3 py-1 touch-target disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages}
+                aria-label="Go to next page"
+              >
+                Next
+              </button>
             </nav>
           </div>
         )}
