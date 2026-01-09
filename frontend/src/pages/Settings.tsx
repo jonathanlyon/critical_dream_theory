@@ -91,7 +91,8 @@ export default function Settings() {
       setMicrophones(audioInputs)
       setMicError(null)
     } catch (err) {
-      console.error('Error enumerating microphones:', err)
+      // Permission denied is expected behavior - don't log as error
+      console.warn('Microphone access not granted:', (err as Error).message || err)
       setMicError('Could not access microphones. Please grant permission.')
     }
   }, [])
@@ -172,7 +173,8 @@ export default function Settings() {
       }, 10000)
 
     } catch (err) {
-      console.error('Error testing microphone:', err)
+      // Permission denied is expected behavior - don't log as error
+      console.warn('Microphone test access not granted:', (err as Error).message || err)
       setMicError('Could not access microphone. Please check permissions.')
       setIsTesting(false)
     }
