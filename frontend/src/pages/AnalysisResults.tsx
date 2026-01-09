@@ -44,11 +44,15 @@ const MOCK_ANALYSIS = {
       { emotion: 'Confusion', intensity: 3, context: 'Shifting hallways' }
     ],
     schredlScales: {
+      dreamLength: { value: 342, label: 'Medium-Long', interpretation: 'Above average word count, moderate complexity' },
       realism: { value: 2, label: 'Moderately Bizarre', interpretation: 'Mix of realistic and impossible elements' },
-      emotionalIntensity: { value: 4, label: 'High', interpretation: 'Strong emotional engagement throughout' },
+      emotionalIntensityPositive: { value: 4, label: 'High Positive', interpretation: 'Strong positive emotions (wonder, freedom)' },
+      emotionalIntensityNegative: { value: 3, label: 'Moderate Negative', interpretation: 'Notable negative emotions (anxiety, fear)' },
       clarity: { value: 3, label: 'Moderate', interpretation: 'Some details vivid, others fuzzy' },
       selfParticipation: { value: 5, label: 'Full', interpretation: 'Dreamer fully embodied in the dream' },
-      socialInteraction: { value: 1, label: 'Minimal', interpretation: 'Mostly solitary experience' }
+      socialDensity: { value: 1, label: 'Low', interpretation: '1 character, minimal interactions' },
+      agency: { value: 3, label: 'Moderate', interpretation: 'Active searching, but constrained by environment' },
+      narrativeCoherence: { value: 2, label: 'Fragmented', interpretation: 'Shifting scenes without clear linear progression' }
     }
   },
 
@@ -431,15 +435,19 @@ export default function AnalysisResults() {
               <div>
                 <h3 className="text-sm font-medium text-gray-300 mb-2">Schredl Scales</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {Object.entries(analysis.manifestContent.schredlScales).map(([key, scale]) => (
-                    <div key={key} className="p-3 bg-dream-darker rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-gray-300 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                        <span className="text-sm font-medium text-primary-400">{scale.value}/5</span>
+                  {Object.entries(analysis.manifestContent.schredlScales).map(([key, scale]) => {
+                    const isDreamLength = key === 'dreamLength'
+                    const displayValue = isDreamLength ? `${scale.value} words` : `${scale.value}/5`
+                    return (
+                      <div key={key} className="p-3 bg-dream-darker rounded-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-gray-300 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                          <span className="text-sm font-medium text-primary-400">{displayValue}</span>
+                        </div>
+                        <p className="text-xs text-gray-500">{scale.label}: {scale.interpretation}</p>
                       </div>
-                      <p className="text-xs text-gray-500">{scale.label}: {scale.interpretation}</p>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
