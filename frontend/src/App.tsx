@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useClerk } from '@clerk/clerk-react'
 import LandingPage from './pages/LandingPage'
 import DreamAnalysis from './pages/DreamAnalysis'
+import AnalysisResults from './pages/AnalysisResults'
 import DreamJournal from './pages/DreamJournal'
 import DreamInsights from './pages/DreamInsights'
 import Settings from './pages/Settings'
@@ -67,6 +68,11 @@ function App() {
       <Route path="/analysis" element={
         <AuthenticatedLayout>
           <DreamAnalysis />
+        </AuthenticatedLayout>
+      } />
+      <Route path="/analysis/results" element={
+        <AuthenticatedLayout>
+          <AnalysisResults />
         </AuthenticatedLayout>
       } />
       <Route path="/journal" element={

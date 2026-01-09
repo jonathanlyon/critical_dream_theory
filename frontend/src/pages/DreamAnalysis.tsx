@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useUser, useRecordingLimit, TIER_CONFIGS, SubscriptionTier } from '../contexts/UserContext'
 
 // Recording Preview Component
@@ -126,6 +127,7 @@ function RecordingPreview({
 }
 
 export default function DreamAnalysis() {
+  const navigate = useNavigate()
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -411,8 +413,8 @@ export default function DreamAnalysis() {
           duration={recordingTime}
           onReRecord={() => setRecordingTime(0)}
           onAnalyze={() => {
-            // TODO: Navigate to analysis
-            alert('Analysis would start here')
+            // Navigate to analysis results
+            navigate('/analysis/results', { state: { fromRecording: true } })
           }}
         />
       )}
