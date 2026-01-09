@@ -1,6 +1,8 @@
 import { ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { useUser, UserButton, SignedIn, RedirectToSignIn, SignedOut } from '@clerk/clerk-react'
+
+// Check if Clerk is available
+const CLERK_AVAILABLE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 interface AuthenticatedLayoutProps {
   children: ReactNode
@@ -14,115 +16,154 @@ const navigation = [
   { name: 'Account', href: '/account', icon: UserIcon },
 ]
 
-export default function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const location = useLocation()
+// Dev mode user avatar placeholder
+function DevUserAvatar() {
+  return (
+    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
+      <span className="text-white text-sm font-bold">D</span>
+    </div>
+  )
+}
+
+// Clerk user button component (only loaded when Clerk is available)
+function ClerkUserMenu() {
+  const { useUser, UserButton } = require('@clerk/clerk-react')
   const { user } = useUser()
 
   return (
+    <div className="flex items-center gap-4">
+      <span className="hidden sm:block text-sm text-gray-400">
+        {user?.firstName || 'Dreamer'}
+      </span>
+      <UserButton
+        appearance={{
+          elements: {
+            avatarBox: 'w-9 h-9',
+          },
+        }}
+      />
+    </div>
+  )
+}
+
+// Auth wrapper for Clerk
+function ClerkAuthWrapper({ children }: { children: ReactNode }) {
+  const { SignedIn, SignedOut, RedirectToSignIn } = require('@clerk/clerk-react')
+
+  return (
     <>
-      <SignedIn>
-        <div className="min-h-screen bg-dream-dark flex">
-          {/* Mobile sidebar backdrop */}
-          {sidebarOpen && (
-            <div
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
-
-          {/* Sidebar */}
-          <aside
-            className={`
-              fixed inset-y-0 left-0 z-50 w-64 bg-dream-darker border-r border-dream-border
-              transform transition-transform duration-300 ease-in-out
-              lg:relative lg:translate-x-0
-              ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-            `}
-          >
-            {/* Logo */}
-            <div className="p-6 border-b border-dream-border">
-              <Link to="/" className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
-                  <span className="text-white font-bold">CDT</span>
-                </div>
-                <span className="font-semibold text-white">Dream Theory</span>
-              </Link>
-            </div>
-
-            {/* Navigation */}
-            <nav className="p-4 space-y-1">
-              {navigation.map((item) => {
-                const isActive = location.pathname === item.href
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`
-                      flex items-center gap-3 px-4 py-3 rounded-lg transition-colors touch-target
-                      ${isActive
-                        ? 'bg-primary-600/20 text-primary-400'
-                        : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                      }
-                    `}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span>{item.name}</span>
-                  </Link>
-                )
-              })}
-            </nav>
-          </aside>
-
-          {/* Main content */}
-          <div className="flex-1 flex flex-col min-w-0">
-            {/* Top navigation */}
-            <header className="h-16 bg-dream-darker/80 backdrop-blur-lg border-b border-dream-border flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
-              {/* Mobile menu button */}
-              <button
-                className="lg:hidden p-2 text-gray-400 hover:text-white touch-target"
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open menu"
-              >
-                <MenuIcon className="w-6 h-6" />
-              </button>
-
-              {/* Logo (mobile) */}
-              <Link to="/" className="lg:hidden font-semibold text-white">
-                CDT
-              </Link>
-
-              {/* Spacer */}
-              <div className="hidden lg:block" />
-
-              {/* User menu */}
-              <div className="flex items-center gap-4">
-                <span className="hidden sm:block text-sm text-gray-400">
-                  {user?.firstName || 'Dreamer'}
-                </span>
-                <UserButton
-                  appearance={{
-                    elements: {
-                      avatarBox: 'w-9 h-9',
-                    },
-                  }}
-                />
-              </div>
-            </header>
-
-            {/* Page content */}
-            <main className="flex-1 flex flex-col overflow-auto">
-              {children}
-            </main>
-          </div>
-        </div>
-      </SignedIn>
+      <SignedIn>{children}</SignedIn>
       <SignedOut>
         <RedirectToSignIn />
       </SignedOut>
     </>
   )
+}
+
+export default function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
+
+  const layoutContent = (
+    <div className="min-h-screen bg-dream-dark flex">
+      {/* Mobile sidebar backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-50 w-64 bg-dream-darker border-r border-dream-border
+          transform transition-transform duration-300 ease-in-out
+          lg:relative lg:translate-x-0
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
+        {/* Logo */}
+        <div className="p-6 border-b border-dream-border">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
+              <span className="text-white font-bold">CDT</span>
+            </div>
+            <span className="font-semibold text-white">Dream Theory</span>
+          </Link>
+        </div>
+
+        {/* Navigation */}
+        <nav className="p-4 space-y-1">
+          {navigation.map((item) => {
+            const isActive = location.pathname === item.href
+            return (
+              <Link
+                key={item.name}
+                to={item.href}
+                className={`
+                  flex items-center gap-3 px-4 py-3 rounded-lg transition-colors touch-target
+                  ${isActive
+                    ? 'bg-primary-600/20 text-primary-400'
+                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                  }
+                `}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <item.icon className="w-5 h-5" />
+                <span>{item.name}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      </aside>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top navigation */}
+        <header className="h-16 bg-dream-darker/80 backdrop-blur-lg border-b border-dream-border flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
+          {/* Mobile menu button */}
+          <button
+            className="lg:hidden p-2 text-gray-400 hover:text-white touch-target"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            <MenuIcon className="w-6 h-6" />
+          </button>
+
+          {/* Logo (mobile) */}
+          <Link to="/" className="lg:hidden font-semibold text-white">
+            CDT
+          </Link>
+
+          {/* Spacer */}
+          <div className="hidden lg:block" />
+
+          {/* User menu */}
+          {CLERK_AVAILABLE ? (
+            <ClerkUserMenu />
+          ) : (
+            <div className="flex items-center gap-4">
+              <span className="hidden sm:block text-sm text-gray-400">Dreamer</span>
+              <DevUserAvatar />
+            </div>
+          )}
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 flex flex-col overflow-auto">
+          {children}
+        </main>
+      </div>
+    </div>
+  )
+
+  // Use Clerk auth wrapper if available, otherwise render directly
+  if (CLERK_AVAILABLE) {
+    return <ClerkAuthWrapper>{layoutContent}</ClerkAuthWrapper>
+  }
+
+  return layoutContent
 }
 
 // Icons
