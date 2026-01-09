@@ -1,7 +1,101 @@
-import { useUser } from '@clerk/clerk-react'
+import { useState, useEffect } from 'react'
+
+// Dev mode toggle
+const DEV_MODE = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+
+// Account storage key
+const ACCOUNT_KEY = 'cdt_user_account'
+
+interface UserAccount {
+  name: string
+  email: string
+  tier: 'free' | 'tier1' | 'tier2' | 'tier3'
+  minutesUsed: number
+  minutesLimit: number
+}
+
+const defaultAccount: UserAccount = {
+  name: 'Dreamer',
+  email: 'dreamer@example.com',
+  tier: 'free',
+  minutesUsed: 0,
+  minutesLimit: 1
+}
+
+const tierInfo = {
+  free: { name: 'First Recall', description: 'Free tier - 1 minute one-time', limit: 1 },
+  tier1: { name: 'Noticing', description: '10 minutes per month', limit: 10 },
+  tier2: { name: 'Patterning', description: '20 minutes per month', limit: 20 },
+  tier3: { name: 'Integration', description: '30 minutes per month', limit: 30 }
+}
+
+function loadAccount(): UserAccount {
+  try {
+    const saved = localStorage.getItem(ACCOUNT_KEY)
+    if (saved) {
+      return { ...defaultAccount, ...JSON.parse(saved) }
+    }
+  } catch (e) {
+    console.error('Error loading account:', e)
+  }
+  return defaultAccount
+}
+
+function saveAccount(account: UserAccount): void {
+  try {
+    localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account))
+  } catch (e) {
+    console.error('Error saving account:', e)
+  }
+}
 
 export default function Account() {
-  const { user } = useUser()
+  const [account, setAccount] = useState<UserAccount>(defaultAccount)
+  const [editName, setEditName] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [showSaved, setShowSaved] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // Load account on mount
+  useEffect(() => {
+    const loaded = loadAccount()
+    setAccount(loaded)
+    setEditName(loaded.name)
+  }, [])
+
+  const handleSave = () => {
+    setIsSaving(true)
+
+    setTimeout(() => {
+      const updatedAccount = { ...account, name: editName }
+      saveAccount(updatedAccount)
+      setAccount(updatedAccount)
+      setIsSaving(false)
+      setIsEditing(false)
+      setShowSaved(true)
+
+      setTimeout(() => setShowSaved(false), 2000)
+    }, 300)
+  }
+
+  const handleCancel = () => {
+    setEditName(account.name)
+    setIsEditing(false)
+  }
+
+  const handleDeleteAccount = () => {
+    // In dev mode, just clear localStorage
+    localStorage.removeItem(ACCOUNT_KEY)
+    localStorage.removeItem('cdt_user_settings')
+    setShowDeleteConfirm(false)
+    // Reset to defaults
+    setAccount(defaultAccount)
+    setEditName(defaultAccount.name)
+  }
+
+  const currentTier = tierInfo[account.tier]
+  const usagePercent = (account.minutesUsed / account.minutesLimit) * 100
 
   return (
     <div className="flex-1 p-6">
@@ -11,25 +105,76 @@ export default function Account() {
           Manage your profile and subscription
         </p>
 
+        {/* Dev mode indicator */}
+        {DEV_MODE && (
+          <div className="mb-6 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-400">
+            ⚠️ Dev Mode: Account data is stored locally. In production, this would sync with your authentication provider.
+          </div>
+        )}
+
         <div className="space-y-8">
           {/* Profile Information */}
           <section className="card">
-            <h2 className="text-xl font-semibold text-white mb-6">
-              Profile Information
-            </h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">
+                Profile Information
+              </h2>
+              {showSaved && (
+                <span className="text-green-400 text-sm flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Saved!
+                </span>
+              )}
+            </div>
             <div className="space-y-4">
               <div>
                 <label htmlFor="name" className="block font-medium text-gray-200 mb-2">
                   Name
                 </label>
-                <input
-                  type="text"
-                  id="name"
-                  className="input"
-                  defaultValue={user?.fullName || ''}
-                  placeholder="Your name"
-                />
+                {isEditing ? (
+                  <input
+                    type="text"
+                    id="name"
+                    className="input"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Your name"
+                    aria-label="Edit name"
+                  />
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-white text-lg">{account.name}</span>
+                    <button
+                      className="btn-ghost text-sm"
+                      onClick={() => setIsEditing(true)}
+                      aria-label="Edit profile"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {isEditing && (
+                <div className="flex gap-3 pt-2">
+                  <button
+                    className="btn-ghost touch-target"
+                    onClick={handleCancel}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary touch-target"
+                    onClick={handleSave}
+                    disabled={isSaving || editName === account.name}
+                  >
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="email" className="block font-medium text-gray-200 mb-2">
                   Email
@@ -37,9 +182,10 @@ export default function Account() {
                 <input
                   type="email"
                   id="email"
-                  className="input"
-                  defaultValue={user?.emailAddresses[0]?.emailAddress || ''}
+                  className="input bg-dream-darker/50"
+                  value={account.email}
                   disabled
+                  aria-label="Email address (read only)"
                 />
                 <p className="text-sm text-gray-500 mt-1">
                   Email is managed through your authentication provider
@@ -56,8 +202,8 @@ export default function Account() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <p className="font-medium text-gray-200">Current Tier</p>
-                <p className="text-2xl font-bold text-primary-400">First Recall</p>
-                <p className="text-sm text-gray-500">Free tier - 1 minute one-time</p>
+                <p className="text-2xl font-bold text-primary-400">{currentTier.name}</p>
+                <p className="text-sm text-gray-500">{currentTier.description}</p>
               </div>
               <button className="btn-primary touch-target">
                 Upgrade
@@ -76,12 +222,18 @@ export default function Account() {
             <div className="mb-4">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-gray-400">Minutes Used</span>
-                <span className="font-mono text-primary-400">0:00 / 1:00</span>
+                <span className="font-mono text-primary-400">
+                  {account.minutesUsed}:00 / {account.minutesLimit}:00
+                </span>
               </div>
               <div className="h-3 bg-dream-darker rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-primary-600 to-primary-400 transition-all duration-300"
-                  style={{ width: '0%' }}
+                  className={`h-full transition-all duration-300 ${
+                    usagePercent > 90 ? 'bg-gradient-to-r from-red-600 to-red-400' :
+                    usagePercent > 70 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' :
+                    'bg-gradient-to-r from-primary-600 to-primary-400'
+                  }`}
+                  style={{ width: `${Math.min(100, usagePercent)}%` }}
                 />
               </div>
             </div>
@@ -112,9 +264,34 @@ export default function Account() {
               Permanently delete your account and all associated data.
               This action cannot be undone.
             </p>
-            <button className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 touch-target">
-              Delete Account
-            </button>
+            {showDeleteConfirm ? (
+              <div className="bg-red-950/50 border border-red-900 rounded-lg p-4">
+                <p className="text-red-300 mb-4">
+                  Are you sure you want to delete your account? All your dreams and data will be permanently lost.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    className="btn-ghost touch-target"
+                    onClick={() => setShowDeleteConfirm(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-danger touch-target"
+                    onClick={handleDeleteAccount}
+                  >
+                    Yes, Delete My Account
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="btn-danger touch-target"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                Delete Account
+              </button>
+            )}
           </section>
         </div>
       </div>

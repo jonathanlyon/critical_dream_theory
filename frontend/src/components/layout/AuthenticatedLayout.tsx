@@ -25,6 +25,59 @@ function DevUserAvatar() {
   )
 }
 
+// Dev mode user menu with logout
+function DevUserMenu() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  const handleLogout = () => {
+    // Clear all app data
+    localStorage.removeItem('cdt_user_account')
+    localStorage.removeItem('cdt_user_settings')
+    // Redirect to home
+    window.location.href = '/'
+  }
+
+  return (
+    <div className="relative">
+      <button
+        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-label="User menu"
+        aria-expanded={isOpen}
+      >
+        <span className="hidden sm:block text-sm text-gray-400">Dreamer</span>
+        <DevUserAvatar />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute right-0 mt-2 w-48 bg-dream-darker border border-dream-border rounded-lg shadow-lg z-50">
+            <div className="p-2">
+              <Link
+                to="/account"
+                className="block px-4 py-2 text-sm text-gray-300 hover:bg-white/10 rounded-lg transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                Account Settings
+              </Link>
+              <button
+                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-white/10 rounded-lg transition-colors"
+                onClick={handleLogout}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Clerk user button component (only loaded when Clerk is available)
 function ClerkUserMenu() {
   const { useUser, UserButton } = require('@clerk/clerk-react')
@@ -143,10 +196,7 @@ export default function AuthenticatedLayout({ children }: AuthenticatedLayoutPro
           {CLERK_AVAILABLE ? (
             <ClerkUserMenu />
           ) : (
-            <div className="flex items-center gap-4">
-              <span className="hidden sm:block text-sm text-gray-400">Dreamer</span>
-              <DevUserAvatar />
-            </div>
+            <DevUserMenu />
           )}
         </header>
 
