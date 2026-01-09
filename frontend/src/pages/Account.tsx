@@ -168,10 +168,13 @@ export default function Account() {
                   <button
                     className="btn-primary touch-target"
                     onClick={handleSave}
-                    disabled={isSaving || editName === account.name}
+                    disabled={isSaving || editName === account.name || !editName.trim()}
                   >
                     {isSaving ? 'Saving...' : 'Save Changes'}
                   </button>
+                  {!editName.trim() && editName.length > 0 && (
+                    <span className="text-red-400 text-sm self-center">Name cannot be empty or whitespace only</span>
+                  )}
                 </div>
               )}
 

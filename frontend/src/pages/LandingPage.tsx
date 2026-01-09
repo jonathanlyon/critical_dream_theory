@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useUser } from '../contexts/UserContext'
 
 // Check if Clerk is available
 const CLERK_AVAILABLE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -416,18 +417,42 @@ function DemoPlayer() {
 
 // Fallback auth buttons for development
 function DevAuthButtons() {
+  const { signIn } = useUser()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Get the intended destination from state (if redirected here)
+  const from = (location.state as any)?.from?.pathname || '/analysis'
+  const showSignInPrompt = (location.state as any)?.showSignIn
+
+  const handleSignIn = () => {
+    signIn()
+    navigate(from, { replace: true })
+  }
+
   return (
-    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-      <Link to="/analysis">
-        <button className="btn-primary text-lg px-8 py-3 touch-target">
+    <div className="flex flex-col items-center gap-4">
+      {showSignInPrompt && (
+        <div className="bg-amber-900/30 border border-amber-700 rounded-lg p-4 mb-4 max-w-md">
+          <p className="text-amber-200 text-sm text-center">
+            Please sign in to access that page.
+          </p>
+        </div>
+      )}
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <button
+          onClick={handleSignIn}
+          className="btn-primary text-lg px-8 py-3 touch-target"
+        >
           Start Recording Dreams
         </button>
-      </Link>
-      <Link to="/analysis">
-        <button className="btn-ghost text-lg px-8 py-3 touch-target">
+        <button
+          onClick={handleSignIn}
+          className="btn-ghost text-lg px-8 py-3 touch-target"
+        >
           Sign In (Dev Mode)
         </button>
-      </Link>
+      </div>
     </div>
   )
 }

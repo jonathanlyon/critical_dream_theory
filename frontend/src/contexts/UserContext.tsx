@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react'
 
 // Subscription tiers based on app spec
 export type SubscriptionTier = 'first_recall' | 'noticing' | 'patterning' | 'integration'
@@ -52,6 +52,11 @@ interface UserContextType {
   tierConfig: TierConfig
   setTier: (tier: SubscriptionTier) => void
   isDevMode: boolean
+  // Auth state for dev mode
+  isAuthenticated: boolean
+  signIn: () => void
+  signOut: () => void
+  userName: string
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined)
@@ -60,6 +65,9 @@ interface UserProviderProps {
   children: ReactNode
 }
 
+// Storage key for persisting dev auth state
+const DEV_AUTH_KEY = 'cdt_dev_authenticated'
+
 export function UserProvider({ children }: UserProviderProps) {
   // Default to 'first_recall' (free tier) for dev mode
   // In production, this would come from Clerk/Convex user data
@@ -67,11 +75,33 @@ export function UserProvider({ children }: UserProviderProps) {
 
   const isDevMode = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
+  // Dev mode auth state - defaults to NOT authenticated for proper route protection testing
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (!isDevMode) return false // Will use Clerk in production
+    // Check localStorage for persisted auth state
+    const stored = localStorage.getItem(DEV_AUTH_KEY)
+    return stored === 'true'
+  })
+
+  // Persist auth state changes
+  useEffect(() => {
+    if (isDevMode) {
+      localStorage.setItem(DEV_AUTH_KEY, String(isAuthenticated))
+    }
+  }, [isAuthenticated, isDevMode])
+
+  const signIn = () => setIsAuthenticated(true)
+  const signOut = () => setIsAuthenticated(false)
+
   const value: UserContextType = {
     tier,
     tierConfig: TIER_CONFIGS[tier],
     setTier,
-    isDevMode
+    isDevMode,
+    isAuthenticated,
+    signIn,
+    signOut,
+    userName: isAuthenticated ? 'Dreamer' : ''
   }
 
   return (

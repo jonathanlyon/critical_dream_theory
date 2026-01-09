@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 // Helper to get relative dates for mock data
 function getRelativeDate(daysAgo: number): Date {
@@ -118,10 +118,13 @@ function getTypeBadgeColor(type: string) {
 
 export default function DreamJournal() {
   const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [dateFilter, setDateFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
-  const [toneFilter, setToneFilter] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Initialize filters from URL params
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
+  const [dateFilter, setDateFilter] = useState(searchParams.get('dateRange') || '')
+  const [typeFilter, setTypeFilter] = useState(searchParams.get('dreamType') || '')
+  const [toneFilter, setToneFilter] = useState(searchParams.get('tone') || '')
   const [showArchived, setShowArchived] = useState(false)
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -129,6 +132,16 @@ export default function DreamJournal() {
   // In dev mode, show mock dreams; in prod, this would come from the database
   const [dreams, setDreams] = useState(MOCK_DREAMS)
   const [archivedDreams, setArchivedDreams] = useState<typeof MOCK_DREAMS>([])
+
+  // Sync URL params when filters change
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (searchQuery) params.set('q', searchQuery)
+    if (dateFilter) params.set('dateRange', dateFilter)
+    if (typeFilter) params.set('dreamType', typeFilter)
+    if (toneFilter) params.set('tone', toneFilter)
+    setSearchParams(params, { replace: true })
+  }, [searchQuery, dateFilter, typeFilter, toneFilter, setSearchParams])
 
   // Archive a dream (soft delete)
   const archiveDream = (dreamId: string) => {

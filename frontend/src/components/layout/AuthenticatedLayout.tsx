@@ -1,5 +1,6 @@
 import { ReactNode, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useUser } from '../../contexts/UserContext'
 
 // Check if Clerk is available
 const CLERK_AVAILABLE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -28,13 +29,17 @@ function DevUserAvatar() {
 // Dev mode user menu with logout
 function DevUserMenu() {
   const [isOpen, setIsOpen] = useState(false)
+  const { signOut, userName } = useUser()
+  const navigate = useNavigate()
 
   const handleLogout = () => {
-    // Clear all app data
+    // Sign out using context
+    signOut()
+    // Clear other app data
     localStorage.removeItem('cdt_user_account')
     localStorage.removeItem('cdt_user_settings')
-    // Redirect to home
-    window.location.href = '/'
+    // Navigate to landing page
+    navigate('/', { replace: true })
   }
 
   return (
@@ -45,7 +50,7 @@ function DevUserMenu() {
         aria-label="User menu"
         aria-expanded={isOpen}
       >
-        <span className="hidden sm:block text-sm text-gray-400">Dreamer</span>
+        <span className="hidden sm:block text-sm text-gray-400">{userName || 'Dreamer'}</span>
         <DevUserAvatar />
       </button>
 

@@ -9,22 +9,21 @@ import Settings from './pages/Settings'
 import Account from './pages/Account'
 import NotFound from './pages/NotFound'
 import AuthenticatedLayout from './components/layout/AuthenticatedLayout'
+import ProtectedRoute from './components/ProtectedRoute'
+import { useUser } from './contexts/UserContext'
 
 // Check if Clerk is available
 const CLERK_AVAILABLE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
-// Wrapper for conditional auth components
+// Wrapper for conditional auth components (used when Clerk is available)
 function ConditionalAuth({ children, showWhenSignedOut, showWhenSignedIn }: {
   children: React.ReactNode,
   showWhenSignedOut?: boolean,
   showWhenSignedIn?: boolean
 }) {
   if (!CLERK_AVAILABLE) {
-    // Without Clerk, show landing page content by default
-    if (showWhenSignedOut) return <>{children}</>
-    // Show signed-in content for development
-    if (showWhenSignedIn) return <>{children}</>
-    return null
+    // Without Clerk, use our custom auth state
+    return null // Handled by useUser
   }
 
   // With Clerk, use the real auth state
@@ -42,58 +41,85 @@ function ConditionalAuth({ children, showWhenSignedOut, showWhenSignedIn }: {
   }
 }
 
+// Landing page that shows appropriate content based on auth state
+function LandingOrAuth() {
+  const { isAuthenticated, isDevMode } = useUser()
+
+  if (CLERK_AVAILABLE) {
+    return (
+      <>
+        <ConditionalAuth showWhenSignedOut>
+          <LandingPage />
+        </ConditionalAuth>
+        <ConditionalAuth showWhenSignedIn>
+          <AuthenticatedLayout>
+            <DreamAnalysis />
+          </AuthenticatedLayout>
+        </ConditionalAuth>
+      </>
+    )
+  }
+
+  // Dev mode: show content based on auth state
+  if (isDevMode && isAuthenticated) {
+    return (
+      <AuthenticatedLayout>
+        <DreamAnalysis />
+      </AuthenticatedLayout>
+    )
+  }
+
+  return <LandingPage />
+}
+
 function App() {
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/" element={
-        CLERK_AVAILABLE ? (
-          <>
-            <ConditionalAuth showWhenSignedOut>
-              <LandingPage />
-            </ConditionalAuth>
-            <ConditionalAuth showWhenSignedIn>
-              <AuthenticatedLayout>
-                <DreamAnalysis />
-              </AuthenticatedLayout>
-            </ConditionalAuth>
-          </>
-        ) : (
-          // Without Clerk, always show landing page at root
-          <LandingPage />
-        )
-      } />
+      {/* Public route - shows landing or authenticated home */}
+      <Route path="/" element={<LandingOrAuth />} />
 
-      {/* Protected routes - shown without auth check in dev mode */}
+      {/* Protected routes - require authentication */}
       <Route path="/analysis" element={
-        <AuthenticatedLayout>
-          <DreamAnalysis />
-        </AuthenticatedLayout>
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <DreamAnalysis />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       } />
       <Route path="/analysis/results" element={
-        <AuthenticatedLayout>
-          <AnalysisResults />
-        </AuthenticatedLayout>
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AnalysisResults />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       } />
       <Route path="/journal" element={
-        <AuthenticatedLayout>
-          <DreamJournal />
-        </AuthenticatedLayout>
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <DreamJournal />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       } />
       <Route path="/insights" element={
-        <AuthenticatedLayout>
-          <DreamInsights />
-        </AuthenticatedLayout>
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <DreamInsights />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       } />
       <Route path="/settings" element={
-        <AuthenticatedLayout>
-          <Settings />
-        </AuthenticatedLayout>
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Settings />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       } />
       <Route path="/account" element={
-        <AuthenticatedLayout>
-          <Account />
-        </AuthenticatedLayout>
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Account />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       } />
 
       {/* 404 */}
