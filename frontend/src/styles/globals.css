@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles for the dream-like dark theme */
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-dream-dark text-white min-h-screen;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Prose styling for analysis narratives */
+  .prose-dream {
+    font-family: 'Lora', Georgia, serif;
+    @apply text-gray-200 leading-relaxed;
+  }
+
+  .prose-dream h2 {
+    @apply font-sans text-xl font-semibold text-white mt-8 mb-4;
+  }
+
+  .prose-dream h3 {
+    @apply font-sans text-lg font-medium text-gray-100 mt-6 mb-3;
+  }
+
+  .prose-dream p {
+    @apply mb-4;
+  }
+
+  .prose-dream ul {
+    @apply list-disc list-inside mb-4 space-y-2;
+  }
+
+  /* Scale/data display */
+  .data-display {
+    font-family: 'JetBrains Mono', monospace;
+    @apply text-sm text-primary-300;
+  }
+}
+
+@layer components {
+  /* Button variants */
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary-600 hover:bg-secondary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent hover:bg-white/10 text-gray-300 hover:text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  /* Card component */
+  .card {
+    @apply bg-dream-card border border-dream-border rounded-xl p-6;
+  }
+
+  .card-hover {
+    @apply card hover:border-primary-500/50 transition-colors duration-200 cursor-pointer;
+  }
+
+  /* Input styling */
+  .input {
+    @apply w-full bg-dream-darker border border-dream-border rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors duration-200;
+  }
+
+  /* Focus ring for accessibility */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dream-dark;
+  }
+
+  /* Record button */
+  .record-button {
+    @apply w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-all duration-200;
+  }
+
+  .record-button-pulse {
+    @apply animate-pulse-slow shadow-lg shadow-red-500/50;
+  }
+
+  /* Voice synthesizer visualization */
+  .voice-visualizer {
+    @apply w-full h-48 bg-gradient-to-b from-primary-950/50 to-transparent rounded-2xl overflow-hidden;
+  }
+}
+
+@layer utilities {
+  /* Glass morphism effect */
+  .glass {
+    @apply bg-white/5 backdrop-blur-lg;
+  }
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-400 via-secondary-400 to-accent-400 bg-clip-text text-transparent;
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.primary.700') theme('colors.dream.darker');
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-dream-darker rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-primary-700 rounded-full hover:bg-primary-600;
+  }
+
+  /* Touch target minimum size */
+  .touch-target {
+    @apply min-w-[44px] min-h-[44px];
+  }
+}

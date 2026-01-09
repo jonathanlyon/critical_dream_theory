@@ -1,0 +1,729 @@
+<project_specification>
+  <project_name>Cognitive Dream Theory</project_name>
+
+  <overview>
+    A prototype PWA that lets users voice-record their dreams and receive psychologically grounded, non-authoritative reflections in Markdown. It combines Cognitive Dream Theory (CDT), systematic manifest content coding (Schredl method), and Jungian archetypal frameworks to highlight structural patterns across dreams while keeping the dreamer as the final authority on meaning. The app prioritizes structural coherence over symbolic interpretation, tracking patterns across dreams while maintaining the dreamer's interpretive authority.
+  </overview>
+
+  <target_audience>
+    Serious dreamers who want psychologically rigorous insights from their dreams - individuals interested in self-understanding through systematic dream analysis.
+  </target_audience>
+
+  <technology_stack>
+    <frontend>
+      <framework>React</framework>
+      <type>Progressive Web App (PWA)</type>
+      <styling>TailwindCSS (recommended for rapid prototyping)</styling>
+      <approach>Mobile-first, responsive design optimized for bedside recording</approach>
+    </frontend>
+    <backend>
+      <runtime>Node.js or Python (choose based on best API integration)</runtime>
+      <database>Convex (real-time, serverless)</database>
+      <storage>Cloud storage for raw audio files (Convex file storage or S3-compatible)</storage>
+    </backend>
+    <authentication>
+      <provider>Clerk</provider>
+      <features>Sign up, login, logout, session management</features>
+    </authentication>
+    <external_apis>
+      <transcription>OpenAI Whisper via Groq API</transcription>
+      <emotion_analysis>Hume API (emotional prosody - tone, pace, hesitation)</emotion_analysis>
+      <image_generation>Gemini Nano Banana</image_generation>
+      <llm_analysis>LLM API (comprehensive CDT agent prompt)</llm_analysis>
+    </external_apis>
+    <payments>
+      <provider>Stripe</provider>
+      <features>Subscription management, tier upgrades/downgrades</features>
+    </payments>
+  </technology_stack>
+
+  <core_pillars>
+    <pillar name="Transcription">
+      Fast, accurate, reliable. The foundation everything else builds on. Target: under 30 seconds for a 3-minute recording.
+    </pillar>
+    <pillar name="Dream Analysis">
+      The core differentiator. Must be cogent, coherent, psychologically defensible, believable, trustworthy, and distinctively grounded in CDT/Schredl/Jungian frameworks.
+    </pillar>
+    <pillar name="Insights">
+      The longitudinal magic. Must be specialized, sensitive, gentle (non-prescriptive), beautifully written AND presented, genuinely useful for everyday life application.
+    </pillar>
+  </core_pillars>
+
+  <subscription_tiers>
+    <philosophy>"Dream reflection time is intentionally limited. Insight emerges through attention, not volume."</philosophy>
+    <tier name="First Recall" level="free">
+      <minutes>1 minute (one-time analysis)</minutes>
+      <focus>Try the experience</focus>
+    </tier>
+    <tier name="Noticing" level="tier1">
+      <minutes>10 minutes per month</minutes>
+      <focus>Brief reflections and emotional tagging</focus>
+    </tier>
+    <tier name="Patterning" level="tier2">
+      <minutes>20 minutes per month</minutes>
+      <focus>Recurring themes and continuity tracking</focus>
+    </tier>
+    <tier name="Integration" level="tier3">
+      <minutes>30 minutes per month</minutes>
+      <focus>Deeper narrative and emotional synthesis</focus>
+    </tier>
+  </subscription_tiers>
+
+  <feature_count>135</feature_count>
+
+  <security_and_access_control>
+    <user_roles>
+      <role name="anonymous">
+        <permissions>
+          - Can view landing page
+          - Can interact with demo dream analysis
+          - Cannot access authenticated features
+        </permissions>
+      </role>
+      <role name="trial_user">
+        <permissions>
+          - Can record one dream (1 minute max)
+          - Can view their analysis
+          - Cannot access Dream Insights
+          - Limited to one-time analysis
+        </permissions>
+      </role>
+      <role name="subscriber">
+        <permissions>
+          - Can record dreams up to tier limit (3 minutes max)
+          - Full access to Dream Journal
+          - Full access to Dream Insights (after 3+ dreams)
+          - Can manage account and settings
+          - Can export data as PDF
+        </permissions>
+      </role>
+    </user_roles>
+    <authentication>
+      <method>Clerk (email/password, social login options)</method>
+      <session_timeout>Standard Clerk defaults</session_timeout>
+    </authentication>
+    <data_privacy>
+      - Users can mark dreams as private (excluded from longitudinal analysis)
+      - Users can soft delete (archive) or permanently delete dreams
+      - Dream data isolated per user
+    </data_privacy>
+  </security_and_access_control>
+
+  <core_features>
+    <landing_page_and_onboarding>
+      - Hero section introducing Computational Dream Analysis with CDT approach
+      - Interactive demo with pre-loaded example dream (audio + transcript)
+      - Audio playback of example dream
+      - "Analyze Dream" button triggers live analysis demonstration
+      - Real-time UI updates showing current processing tasks
+      - Dream metadata display (recording length, word count, characters, settings)
+      - Inspirational quotes about dreams/psychology during processing
+      - Engaging CTA to sign up
+      - Clerk authentication integration (signup/login/logout)
+      - First-time user onboarding tips for dream recording
+      - Explanation of CDT methodology
+      - Subscription tier comparison
+      - Privacy and data handling information
+    </landing_page_and_onboarding>
+
+    <recording_experience>
+      - Main screen with prominent voice synthesizer visual (static state)
+      - Animated voice synthesizer synchronized with user's voice during recording
+      - Pulsing red record button with "Record Your Dream" invitation
+      - 3-second countdown before recording starts
+      - Pause and resume functionality for thought collection
+      - Stop button to end recording
+      - Max time enforcement based on tier (1 min trial, 3 min paid)
+      - Visual time remaining indicator
+      - Re-record option before submitting
+      - Audio preview before analysis
+      - Tips for first-time recorders
+      - Top navigation bar with avatar and logout
+      - Side menu navigation (Dream Analysis, Dream Journal, Dream Insights, Settings, Account)
+    </recording_experience>
+
+    <pre_analysis_context>
+      <sleep_quality>
+        Groningen Sleep Quality Questionnaire (optional, quick-tap format):
+        - I had a deep sleep last night
+        - I feel like I slept poorly last night
+        - It took me more than half an hour to fall asleep last night
+        - I felt tired after waking up this morning
+        - I woke up several times last night
+        - I feel like I didn't get enough sleep last night
+        - I got up in the middle of the night
+        - I felt rested after waking up this morning (reverse)
+        - I feel like I only had a couple hours of sleep last night
+        - I feel I slept well last night (reverse)
+        - I didn't sleep a wink last night
+        - I didn't have any trouble falling asleep last night (reverse)
+        - After I woke up last night, I had trouble falling asleep again
+        - I tossed and turned all night last night
+        - I didn't get more than 5 hours sleep last night
+        Quick mode (3-4 key questions) vs Detailed mode (full questionnaire)
+        System calculates composite sleep quality score
+      </sleep_quality>
+      <life_events>
+        Multi-select categories (optional):
+        - Relationships: New relationship, Breakup, Marriage/Wedding, Conflict with loved one
+        - Family: Birth, Death, Illness (self/family member)
+        - Work/Career: New job, Promotion, Fired/Laid off, Major project/deadline
+        - Financial: Financial stress, Major purchase, Windfall
+        - Life Transitions: Moving home, Travel, Graduation, Retirement
+        - Health/Wellbeing: Depression, Anxiety, Recovery, New diagnosis
+        - Other: Free text option
+      </life_events>
+      <mood_tracker>
+        Simple pre-recording mood capture:
+        - Emoji scale or core emotions (Anxious, Sad, Calm, Happy, Angry, Neutral)
+      </mood_tracker>
+    </pre_analysis_context>
+
+    <transcription_and_processing>
+      - Whisper/Groq API transcription
+      - Hume API emotional prosody analysis (tone, pace, hesitation markers)
+      - Real-time progress indicators:
+        - Running word count
+        - Percentage progress of transcription
+        - Overall process tracking
+        - Current task display
+      - Inspirational quotes about dreams and psychology during wait
+      - Metadata extraction (date, time, duration)
+      - Error handling for failed transcriptions
+    </transcription_and_processing>
+
+    <dream_analysis_engine>
+      <algorithm_architecture>
+        Comprehensive CDT agent prompt (modular for future sub-agent splitting)
+
+        <manifest_content_coding method="Schredl">
+          Basic Scales:
+          - Dream Length: Word count + narrative complexity (3-point scale)
+          - Emotional Intensity: Positive emotions (0-5), Negative emotions (0-5)
+          - Realism/Bizarreness: Deviation from waking logic (4-point scale)
+          - Social Density: Number of characters, interaction types (verbal/physical/aggressive)
+          - Agency: Dreamer's control vs. passive experience spectrum
+          - Narrative Coherence: Logical flow vs. fragmentation
+
+          Interaction Coding:
+          - Aggression (physical/verbal, directed to/from dreamer)
+          - Affiliation (support, intimacy, collaboration)
+          - Avoidance (escape, hiding, isolation)
+
+          Setting and Objects:
+          - Indoor/outdoor/ambiguous
+          - Familiar/unfamiliar locations
+          - Symbolic objects (vehicles, buildings, natural elements)
+        </manifest_content_coding>
+
+        <cdt_structural_analysis>
+          Vault Activation Assessment:
+          - Episodic References: Recent events (1-7 days), distant memories
+          - Emotional Salience: Connection to waking concerns
+          - Identity Relevance: Self-concept, relationships, values
+
+          Cognitive Drift Detection:
+          - Identity Drift: Self-concept tensions (actual vs. ideal self)
+          - Emotional Drift: Unprocessed feelings requiring integration
+          - Developmental Drift: Life transitions, role changes
+          - Trauma Drift: Intrusive/repetitive elements (if present)
+
+          Dream Type Classification:
+          - Resolution Dreams: High emotional intensity + recurring themes + identity-relevant content
+          - Replay Dreams: High fidelity to recent events + minimal transformation
+          - Residual Dreams: Low salience + fragmented + mundane activities
+          - Generative Dreams: Novel recombinations + creative elements + moderate emotion
+          - Lucid Dreams: Metacognitive markers (awareness, control, reflection)
+        </cdt_structural_analysis>
+
+        <archetypal_pattern_recognition lens="Jungian">
+          Non-prescriptive resonance possibilities:
+
+          Threshold Imagery:
+          - Doors, bridges, crossroads → May reflect transitions or decisions
+          - Falling, flying, drowning → Could relate to loss of control or liberation
+
+          Shadow Material:
+          - Pursued by threatening figures → Might symbolize disowned aspects
+          - Dark spaces, hidden rooms → Possibly indicates unconscious content
+
+          Anima/Animus Figures:
+          - Significant opposite-gender characters → May represent inner contrasexual qualities
+
+          Self/Wholeness Symbols:
+          - Circles, mandalas, centers → Could suggest integration processes
+          - Babies, children → Might indicate new beginnings or vulnerability
+
+          Archetypal Scenarios:
+          - Journey/quest → May reflect personal development
+          - Battle/conflict → Could relate to internal struggles
+          - Loss/death → Possibly indicates transformation or endings
+        </archetypal_pattern_recognition>
+      </algorithm_architecture>
+
+      <output_display>
+        Show both numerical scales AND narrative interpretations
+      </output_display>
+    </dream_analysis_engine>
+
+    <dream_report_structure>
+      <section name="Dream Overview">
+        - Date and timestamp
+        - Word count
+        - Recording duration
+        - Emotional tone summary
+        - Dream type classification with confidence level
+        - AI-generated visual of the dream (Gemini Nano Banana)
+      </section>
+
+      <section name="Manifest Content Summary">
+        - Key characters identified
+        - Settings described
+        - Actions catalogued (objective description)
+        - Emotional landscape with intensity ratings
+        - Notable bizarreness or realism markers
+        - All Schredl scales displayed with values and interpretations
+      </section>
+
+      <section name="Structural Analysis - CDT Framework">
+        - Vault activation assessment (recent vs. distant memories)
+        - Potential cognitive drift themes (tentatively suggested)
+        - Convergence indicators (if resolution dream)
+        - Dream type classification rationale
+      </section>
+
+      <section name="Archetypal Resonances">
+        - Symbolic elements presented as possible lenses
+        - Threshold/shadow/integration themes (if present)
+        - Invitational questions for reflection
+        - All framed as "may reflect," "could relate to" (non-prescriptive)
+      </section>
+
+      <section name="Longitudinal Context" requires="3+ dreams">
+        - Connections to previous dreams
+        - Recurring patterns or evolving themes
+        - Drift resolution progress
+      </section>
+
+      <section name="Reflective Prompts">
+        - Open-ended questions tailored to specific dream content
+        - Designed to deepen personal meaning-making
+        - Maintains dreamer as final authority
+      </section>
+    </dream_report_structure>
+
+    <dream_journal>
+      - Chronological card grid layout
+      - AI-generated dream thumbnail on each card
+      - Card metadata: date, title, dream type, emotional tone
+      - Search functionality (keywords)
+      - Filter by date range
+      - Filter by dream type
+      - Filter by emotional tone
+      - Audio replay of original recording
+      - Full report view
+      - Soft delete (archive) functionality
+      - Permanent delete with confirmation
+      - Privacy toggle (exclude from longitudinal analysis)
+      - Empty state for new users
+    </dream_journal>
+
+    <dream_insights>
+      - Progress indicator for users with fewer than 3 dreams ("Record X more dreams to unlock pattern insights")
+      - Unlocked after 3 dreams
+      - Narrative format styled like psychotherapist session notes
+      - Pattern synthesis across recent dreams
+      - Comparative analysis (latest dream vs. previous dreams)
+      - Emerging themes identification
+      - Drift resolution progress tracking
+      - Working hypotheses (tentatively framed)
+      - Beautiful typography and presentation
+      - Warm, insightful, non-prescriptive tone
+
+      <longitudinal_tracking requires="5+ dreams">
+        Cross-Dream Analysis:
+        - Recurring elements: Characters, settings, emotions appearing 2+ times
+        - Thematic evolution: How patterns shift over time
+        - Drift resolution indicators: Reduced recurrence, emotional intensity changes
+        - Metacognitive development: Increased lucidity or dream awareness
+        - Temporal correlations: Life events → dream content lag analysis
+        - Emotional state → dream emotional valence correlation
+        - Sleep quality → dream recall and complexity correlation
+      </longitudinal_tracking>
+    </dream_insights>
+
+    <settings>
+      - Notification preferences (reminders to record, weekly summaries, milestones)
+      - Recording setup (microphone selection and testing)
+      - Generic messaging foundation with architecture for future personalization
+    </settings>
+
+    <account>
+      - Profile information management
+      - Subscription management (view current tier, upgrade/downgrade)
+      - Usage tracking (minutes used/remaining this month)
+      - Data export (PDF reports of dreams and analyses)
+      - Account deletion option
+    </account>
+
+    <pwa_features>
+      - PWA manifest for installability
+      - Offline capability (basic)
+      - Mobile-first responsive design
+      - Touch-optimized for bedside use
+      - Large touch targets (44px minimum)
+    </pwa_features>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <users>
+        - id (Convex ID)
+        - clerk_id (string, unique)
+        - email (string)
+        - name (string)
+        - subscription_tier (enum: free, tier1, tier2, tier3)
+        - minutes_used_this_month (number)
+        - created_at (timestamp)
+        - updated_at (timestamp)
+      </users>
+
+      <dreams>
+        - id (Convex ID)
+        - user_id (reference to users)
+        - title (string, AI-generated)
+        - audio_url (string, cloud storage reference)
+        - transcript (string)
+        - duration_seconds (number)
+        - word_count (number)
+        - dream_type (enum: resolution, replay, residual, generative, lucid)
+        - dream_type_confidence (number, 0-1)
+        - emotional_tone (string)
+        - is_private (boolean, default false)
+        - is_archived (boolean, default false)
+        - recorded_at (timestamp)
+        - created_at (timestamp)
+        - updated_at (timestamp)
+      </dreams>
+
+      <dream_analyses>
+        - id (Convex ID)
+        - dream_id (reference to dreams)
+        - ai_image_url (string)
+        - manifest_content (JSON: characters, settings, actions, emotions)
+        - schredl_scales (JSON: length, emotional_intensity_pos, emotional_intensity_neg, bizarreness, social_density, agency, coherence)
+        - interactions (JSON: aggression, affiliation, avoidance)
+        - vault_activation (JSON: episodic_recent, episodic_distant, emotional_salience, identity_relevance)
+        - cognitive_drift (JSON: identity, emotional, developmental, trauma)
+        - archetypal_resonances (JSON: threshold, shadow, anima_animus, self_wholeness, scenarios)
+        - reflective_prompts (array of strings)
+        - full_narrative (string, Markdown)
+        - created_at (timestamp)
+      </dream_analyses>
+
+      <dream_context>
+        - id (Convex ID)
+        - dream_id (reference to dreams)
+        - sleep_quality_responses (JSON: array of questionnaire answers)
+        - sleep_quality_score (number, calculated)
+        - life_events (array of strings)
+        - mood (string)
+        - created_at (timestamp)
+      </dream_context>
+
+      <prosody_analysis>
+        - id (Convex ID)
+        - dream_id (reference to dreams)
+        - hume_response (JSON: full Hume API response)
+        - tone_markers (array of timestamps and tones)
+        - pace_analysis (JSON)
+        - hesitation_markers (array of timestamps)
+        - created_at (timestamp)
+      </prosody_analysis>
+
+      <user_settings>
+        - id (Convex ID)
+        - user_id (reference to users)
+        - notification_reminders (boolean)
+        - notification_weekly_summary (boolean)
+        - notification_milestones (boolean)
+        - preferred_microphone (string, optional)
+        - created_at (timestamp)
+        - updated_at (timestamp)
+      </user_settings>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <authentication>
+      - Clerk webhook handlers for user sync
+    </authentication>
+
+    <dreams>
+      - POST /api/dreams/upload - Upload audio file
+      - POST /api/dreams/transcribe - Trigger transcription
+      - POST /api/dreams/analyze - Trigger full analysis
+      - GET /api/dreams - List user's dreams (with filters)
+      - GET /api/dreams/:id - Get single dream with analysis
+      - PATCH /api/dreams/:id - Update dream (title, privacy, archive)
+      - DELETE /api/dreams/:id - Permanent delete
+    </dreams>
+
+    <context>
+      - POST /api/dreams/:id/context - Save sleep/life/mood context
+    </context>
+
+    <insights>
+      - GET /api/insights - Get longitudinal insights
+      - GET /api/insights/patterns - Get pattern analysis
+    </insights>
+
+    <account>
+      - GET /api/account - Get user profile and subscription
+      - PATCH /api/account - Update profile
+      - GET /api/account/usage - Get minutes usage
+      - POST /api/account/export - Generate PDF export
+    </account>
+
+    <settings>
+      - GET /api/settings - Get user settings
+      - PATCH /api/settings - Update settings
+    </settings>
+
+    <subscriptions>
+      - POST /api/subscriptions/checkout - Create Stripe checkout session
+      - POST /api/subscriptions/portal - Create Stripe portal session
+      - POST /api/webhooks/stripe - Handle Stripe webhooks
+    </subscriptions>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <landing_page>
+      - Full-width hero section with CDT introduction
+      - Interactive demo area (example dream player + analyze button)
+      - Real-time analysis visualization
+      - Feature highlights
+      - Subscription tier comparison
+      - CTA to sign up
+      - Footer with privacy/terms
+    </landing_page>
+
+    <authenticated_layout>
+      - Top navigation bar: Logo, user avatar, logout
+      - Collapsible side menu (hamburger on mobile):
+        - Dream Analysis (main recording screen)
+        - Dream Journal
+        - Dream Insights
+        - Settings
+        - Account
+      - Main content area (responsive)
+    </authenticated_layout>
+
+    <main_recording_screen>
+      - Centered voice synthesizer visualization (large, prominent)
+      - Record button below visualizer (pulsing red when ready)
+      - Time indicator (remaining time based on tier)
+      - Pause/resume controls (during recording)
+      - Stop button (during recording)
+      - Re-record option (after recording)
+      - "Analyze Dream" button (after recording)
+      - Optional context forms (collapsible)
+    </main_recording_screen>
+
+    <analysis_view>
+      - Progress indicators during processing
+      - Inspirational quotes rotation
+      - Tabbed or accordion sections for report
+      - AI-generated image prominently displayed
+      - Schredl scales with visual representations
+      - Narrative sections with beautiful typography
+      - Reflective prompts highlighted
+      - Actions: Save, Share (if implemented), Return to Journal
+    </analysis_view>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Primary: Deep blue/indigo (trust, depth, dreams)
+      - Secondary: Soft purple/violet (psychology, intuition)
+      - Accent: Warm gold (insight, illumination)
+      - Background: Dark mode default (nighttime recording)
+      - Text: High contrast for readability
+    </color_palette>
+    <typography>
+      - Headings: Clean, modern sans-serif
+      - Body: Highly readable serif for narrative content
+      - Monospace: For technical data/scales display
+    </typography>
+    <visual_style>
+      - Calm, meditative aesthetic
+      - Subtle animations (not distracting)
+      - Dream-like, slightly ethereal feel
+      - Professional yet warm
+    </visual_style>
+  </design_system>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Foundation Setup</title>
+      <tasks>
+        - Initialize React PWA project
+        - Set up Convex database
+        - Configure Clerk authentication
+        - Create basic layout components
+        - Set up routing
+        - Configure PWA manifest
+      </tasks>
+    </step>
+
+    <step number="2">
+      <title>Landing Page and Demo</title>
+      <tasks>
+        - Build landing page hero
+        - Implement example dream player
+        - Create analysis demo visualization
+        - Build authentication flow
+        - Create subscription tier display
+      </tasks>
+    </step>
+
+    <step number="3">
+      <title>Recording Experience (Core Pillar 1: Transcription)</title>
+      <tasks>
+        - Build voice synthesizer visualization
+        - Implement audio recording with MediaRecorder API
+        - Add countdown, pause/resume, stop controls
+        - Implement tier-based time limits
+        - Build audio upload to cloud storage
+        - Integrate Whisper/Groq transcription
+        - Integrate Hume API for prosody
+        - Build real-time progress indicators
+      </tasks>
+    </step>
+
+    <step number="4">
+      <title>Dream Analysis Engine (Core Pillar 2: Analysis)</title>
+      <tasks>
+        - Design comprehensive CDT agent prompt
+        - Implement manifest content coding
+        - Implement CDT structural analysis
+        - Implement archetypal pattern recognition
+        - Integrate image generation (Gemini Nano Banana)
+        - Build full report generation
+        - Create analysis UI with all sections
+      </tasks>
+    </step>
+
+    <step number="5">
+      <title>Dream Journal</title>
+      <tasks>
+        - Build card grid layout
+        - Implement search and filters
+        - Add audio replay
+        - Implement archive/delete
+        - Add privacy toggle
+        - Build detail view
+      </tasks>
+    </step>
+
+    <step number="6">
+      <title>Dream Insights (Core Pillar 3: Insights)</title>
+      <tasks>
+        - Build progress indicator for new users
+        - Design narrative generation prompt
+        - Implement pattern synthesis
+        - Build comparative analysis
+        - Create beautiful presentation
+        - Implement longitudinal tracking
+      </tasks>
+    </step>
+
+    <step number="7">
+      <title>Settings, Account, and Subscriptions</title>
+      <tasks>
+        - Build settings page
+        - Build account page
+        - Integrate Stripe for subscriptions
+        - Implement usage tracking
+        - Build PDF export
+      </tasks>
+    </step>
+
+    <step number="8">
+      <title>Pre-Analysis Context</title>
+      <tasks>
+        - Build sleep quality questionnaire UI
+        - Build life events selector
+        - Build mood tracker
+        - Integrate context into analysis
+      </tasks>
+    </step>
+
+    <step number="9">
+      <title>Polish and PWA</title>
+      <tasks>
+        - Responsive design refinement
+        - PWA optimization
+        - Performance optimization
+        - Error handling
+        - Loading states
+        - Accessibility audit
+      </tasks>
+    </step>
+
+    <step number="10">
+      <title>Testing and Launch Prep</title>
+      <tasks>
+        - End-to-end testing
+        - Security audit
+        - Analytics setup
+        - Documentation
+        - Deployment configuration
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Users can record dreams via voice with pause/resume
+      - Transcription completes accurately in under 30 seconds for 3-minute recordings
+      - Analysis produces cogent, psychologically grounded reports
+      - Longitudinal insights emerge after 3+ dreams
+      - Subscription tiers enforce correct time limits
+      - All CRUD operations work for dreams
+      - PDF export generates correctly
+    </functionality>
+
+    <user_experience>
+      - Recording feels intuitive and calming
+      - Analysis results are readable and insightful
+      - Navigation is clear and consistent
+      - Mobile experience is excellent for bedside use
+      - Loading states and progress indicators keep users informed
+      - Error messages are helpful and non-technical
+    </user_experience>
+
+    <technical_quality>
+      - No mock data - all data persists to Convex
+      - API integrations are robust with error handling
+      - PWA is installable and works offline (basic)
+      - Performance meets targets (page loads under 3s)
+      - Security: proper auth, data isolation, input validation
+    </technical_quality>
+
+    <design_polish>
+      - Consistent visual language throughout
+      - Dream-like, professional aesthetic
+      - Typography optimized for readability
+      - Responsive across all device sizes
+      - Animations are subtle and purposeful
+    </design_polish>
+
+    <differentiation>
+      - Analysis is distinctively CDT/Schredl/Jungian grounded
+      - Non-prescriptive language maintains dreamer authority
+      - Longitudinal insights read like therapist session notes
+      - Overall experience feels psychologically sophisticated
+    </differentiation>
+  </success_criteria>
+</project_specification>
