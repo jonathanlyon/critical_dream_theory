@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 // Mock analysis data for demonstration
@@ -159,6 +159,14 @@ export default function AnalysisResults() {
   const [analysis, setAnalysis] = useState<typeof MOCK_ANALYSIS | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview']))
 
+  // Audio player state
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [audioProgress, setAudioProgress] = useState(0)
+  const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Privacy toggle state
+  const [isPrivate, setIsPrivate] = useState(false)
+
   // Check if we came from recording
   const fromRecording = location.state?.fromRecording || false
 
@@ -200,6 +208,44 @@ export default function AnalysisResults() {
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
+
+  // Audio playback controls (simulated for mock data)
+  const togglePlayback = () => {
+    if (isPlaying) {
+      // Pause
+      if (audioIntervalRef.current) {
+        clearInterval(audioIntervalRef.current)
+        audioIntervalRef.current = null
+      }
+      setIsPlaying(false)
+    } else {
+      // Play - simulate audio progress
+      setIsPlaying(true)
+      const duration = analysis?.recordingDuration || 127
+      audioIntervalRef.current = setInterval(() => {
+        setAudioProgress(prev => {
+          if (prev >= duration) {
+            if (audioIntervalRef.current) {
+              clearInterval(audioIntervalRef.current)
+              audioIntervalRef.current = null
+            }
+            setIsPlaying(false)
+            return 0
+          }
+          return prev + 1
+        })
+      }, 1000)
+    }
+  }
+
+  // Cleanup audio interval on unmount
+  useEffect(() => {
+    return () => {
+      if (audioIntervalRef.current) {
+        clearInterval(audioIntervalRef.current)
+      }
+    }
+  }, [])
 
   // Processing view
   if (isProcessing) {
@@ -279,6 +325,24 @@ export default function AnalysisResults() {
             <span>Back to Journal</span>
           </button>
           <div className="flex items-center gap-2">
+            {/* Privacy Toggle */}
+            <button
+              onClick={() => setIsPrivate(!isPrivate)}
+              className={`btn-ghost text-sm flex items-center gap-1 ${isPrivate ? 'text-amber-400' : ''}`}
+              aria-label={isPrivate ? 'Make public' : 'Make private'}
+              title={isPrivate ? 'This dream is private (excluded from Insights)' : 'Make private to exclude from Insights'}
+            >
+              {isPrivate ? (
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM8.9 6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2H8.9V6zM18 20H6V10h12v10z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                </svg>
+              )}
+              {isPrivate ? 'Private' : 'Public'}
+            </button>
             <button className="btn-ghost text-sm">
               <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -348,6 +412,47 @@ export default function AnalysisResults() {
             <p className="text-sm text-gray-400">
               <span className="text-gray-300 font-medium">Emotional Tone:</span> {analysis.overview.emotionalTone}
             </p>
+          </div>
+
+          {/* Audio Player */}
+          <div className="mt-6 pt-6 border-t border-dream-border">
+            <h3 className="text-sm font-medium text-gray-300 mb-3">Original Recording</h3>
+            <div className="flex items-center gap-4 p-4 bg-dream-darker rounded-lg">
+              {/* Play/Pause Button */}
+              <button
+                onClick={togglePlayback}
+                className="w-12 h-12 rounded-full bg-primary-500 hover:bg-primary-600 flex items-center justify-center transition-colors"
+                aria-label={isPlaying ? 'Pause recording' : 'Play recording'}
+              >
+                {isPlaying ? (
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="4" width="4" height="16" />
+                    <rect x="14" y="4" width="4" height="16" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Progress Bar */}
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs text-gray-400">{formatDuration(audioProgress)}</span>
+                  <div className="flex-1 h-2 bg-dream-border rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary-500 rounded-full transition-all duration-300"
+                      style={{ width: `${(audioProgress / analysis.recordingDuration) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400">{formatDuration(analysis.recordingDuration)}</span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {isPlaying ? 'Playing...' : 'Click play to listen to your dream recording'}
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
