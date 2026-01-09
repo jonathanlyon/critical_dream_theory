@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
 import { ConvexProvider, ConvexReactClient } from 'convex/react'
+import { UserProvider } from './contexts/UserContext'
 import App from './App'
 import './styles/globals.css'
 
@@ -20,17 +21,19 @@ const convex = CONVEX_URL ? new ConvexReactClient(CONVEX_URL) : null
 
 // Wrapper component that conditionally uses Clerk
 function AppWithProviders() {
-  const content = convex ? (
-    <ConvexProvider client={convex}>
+  const appContent = (
+    <UserProvider>
       <BrowserRouter>
         <App />
       </BrowserRouter>
-    </ConvexProvider>
-  ) : (
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    </UserProvider>
   )
+
+  const content = convex ? (
+    <ConvexProvider client={convex}>
+      {appContent}
+    </ConvexProvider>
+  ) : appContent
 
   // Only use ClerkProvider if we have a valid key
   if (CLERK_PUBLISHABLE_KEY) {
