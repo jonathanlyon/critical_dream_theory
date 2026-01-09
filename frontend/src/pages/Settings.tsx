@@ -1,7 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 // Settings storage key
 const SETTINGS_KEY = 'cdt_user_settings'
+
+interface MicrophoneDevice {
+  deviceId: string
+  label: string
+}
 
 interface UserSettings {
   notifications: {
@@ -51,10 +56,135 @@ export default function Settings() {
   const [showSaved, setShowSaved] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
 
+  // Microphone state
+  const [microphones, setMicrophones] = useState<MicrophoneDevice[]>([])
+  const [isTesting, setIsTesting] = useState(false)
+  const [audioLevel, setAudioLevel] = useState(0)
+  const [micError, setMicError] = useState<string | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+
   // Load settings on mount
   useEffect(() => {
     setSettings(loadSettings())
   }, [])
+
+  // Enumerate available microphones
+  const enumerateMicrophones = useCallback(async () => {
+    try {
+      // Request permission first to get labeled devices
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          // Stop the stream immediately, we just needed permission
+          stream.getTracks().forEach(track => track.stop())
+        })
+
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices
+        .filter(device => device.kind === 'audioinput')
+        .map(device => ({
+          deviceId: device.deviceId,
+          label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
+        }))
+
+      setMicrophones(audioInputs)
+      setMicError(null)
+    } catch (err) {
+      console.error('Error enumerating microphones:', err)
+      setMicError('Could not access microphones. Please grant permission.')
+    }
+  }, [])
+
+  // Load microphones on mount
+  useEffect(() => {
+    enumerateMicrophones()
+  }, [enumerateMicrophones])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopMicTest()
+    }
+  }, [])
+
+  // Stop microphone test
+  const stopMicTest = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop())
+      mediaStreamRef.current = null
+    }
+    analyserRef.current = null
+    setIsTesting(false)
+    setAudioLevel(0)
+  }, [])
+
+  // Start microphone test
+  const startMicTest = async () => {
+    try {
+      setMicError(null)
+
+      // Get the selected microphone or use default
+      const constraints: MediaStreamConstraints = {
+        audio: settings.recording.preferredMicrophone
+          ? { deviceId: { exact: settings.recording.preferredMicrophone } }
+          : true
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      mediaStreamRef.current = stream
+
+      // Set up audio analysis
+      const audioContext = new AudioContext()
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+      analyserRef.current = analyser
+
+      setIsTesting(true)
+
+      // Start monitoring audio levels
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+      const updateLevel = () => {
+        if (!analyserRef.current) return
+
+        analyserRef.current.getByteFrequencyData(dataArray)
+        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+        const normalizedLevel = Math.min(100, (average / 128) * 100)
+        setAudioLevel(normalizedLevel)
+
+        animationFrameRef.current = requestAnimationFrame(updateLevel)
+      }
+
+      updateLevel()
+
+      // Auto-stop after 10 seconds
+      setTimeout(() => {
+        if (isTesting) {
+          stopMicTest()
+        }
+      }, 10000)
+
+    } catch (err) {
+      console.error('Error testing microphone:', err)
+      setMicError('Could not access microphone. Please check permissions.')
+      setIsTesting(false)
+    }
+  }
+
+  const handleMicTest = () => {
+    if (isTesting) {
+      stopMicTest()
+    } else {
+      startMicTest()
+    }
+  }
 
   const handleNotificationChange = (key: keyof UserSettings['notifications']) => {
     setSettings(prev => ({
@@ -167,29 +297,61 @@ export default function Settings() {
                       recording: { ...prev.recording, preferredMicrophone: e.target.value }
                     }))
                     setHasChanges(true)
+                    // Stop any ongoing test when changing microphone
+                    if (isTesting) stopMicTest()
                   }}
                 >
                   <option value="">Default Microphone</option>
-                  {/* Microphone options would be populated dynamically */}
+                  {microphones.map((mic) => (
+                    <option key={mic.deviceId} value={mic.deviceId}>
+                      {mic.label}
+                    </option>
+                  ))}
                 </select>
+                {microphones.length === 0 && !micError && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Loading available microphones...
+                  </p>
+                )}
+                {microphones.length > 0 && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {microphones.length} microphone{microphones.length !== 1 ? 's' : ''} available
+                  </p>
+                )}
               </div>
 
               <div>
                 <p className="font-medium text-gray-200 mb-2">Microphone Test</p>
                 <div className="flex items-center gap-4">
-                  <button className="btn-secondary touch-target">
-                    Test Microphone
+                  <button
+                    className={`touch-target ${isTesting ? 'btn-danger' : 'btn-secondary'}`}
+                    onClick={handleMicTest}
+                    aria-label={isTesting ? 'Stop microphone test' : 'Test microphone'}
+                  >
+                    {isTesting ? 'Stop Test' : 'Test Microphone'}
                   </button>
                   <div className="flex-1 h-3 bg-dream-darker rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-100"
-                      style={{ width: '0%' }}
+                      className={`h-full transition-all duration-100 ${
+                        audioLevel > 70 ? 'bg-gradient-to-r from-yellow-500 to-red-500' :
+                        audioLevel > 30 ? 'bg-gradient-to-r from-green-500 to-yellow-500' :
+                        'bg-gradient-to-r from-green-500 to-green-400'
+                      }`}
+                      style={{ width: `${audioLevel}%` }}
                     />
                   </div>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">
-                  Click "Test Microphone" and speak to see audio levels
-                </p>
+                {micError ? (
+                  <p className="text-sm text-red-400 mt-2">{micError}</p>
+                ) : isTesting ? (
+                  <p className="text-sm text-green-400 mt-2">
+                    🎤 Listening... Speak to see audio levels (auto-stops in 10s)
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-500 mt-2">
+                    Click "Test Microphone" and speak to see audio levels
+                  </p>
+                )}
               </div>
             </div>
           </section>
