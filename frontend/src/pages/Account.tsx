@@ -14,6 +14,7 @@ interface UserAccount {
   tier: 'free' | 'tier1' | 'tier2' | 'tier3'
   minutesUsed: number
   minutesLimit: number
+  lastResetMonth?: string // Format: "YYYY-MM"
 }
 
 const defaultAccount: UserAccount = {
@@ -31,16 +32,44 @@ const tierInfo = {
   tier3: { name: 'Integration', description: '30 minutes per month', limit: 30 }
 }
 
+// Get current month as "YYYY-MM" string
+function getCurrentMonth(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
 function loadAccount(): UserAccount {
   try {
     const saved = localStorage.getItem(ACCOUNT_KEY)
     if (saved) {
-      return { ...defaultAccount, ...JSON.parse(saved) }
+      const account = { ...defaultAccount, ...JSON.parse(saved) }
+      const currentMonth = getCurrentMonth()
+
+      // Check if we need to reset monthly usage (only for paid tiers)
+      if (account.tier !== 'free' && account.lastResetMonth !== currentMonth) {
+        // New month - reset minutes used
+        account.minutesUsed = 0
+        account.lastResetMonth = currentMonth
+        // Save the reset
+        saveAccount(account)
+        console.log(`Monthly usage reset for ${currentMonth}`)
+      }
+
+      // For free tier, don't reset (it's one-time usage)
+      // But still set lastResetMonth for tracking
+      if (!account.lastResetMonth) {
+        account.lastResetMonth = currentMonth
+        saveAccount(account)
+      }
+
+      return account
     }
   } catch (e) {
     console.error('Error loading account:', e)
   }
-  return defaultAccount
+  return { ...defaultAccount, lastResetMonth: getCurrentMonth() }
 }
 
 function saveAccount(account: UserAccount): void {

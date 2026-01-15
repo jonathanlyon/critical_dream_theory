@@ -4,15 +4,39 @@ import { useNavigate, useLocation } from 'react-router-dom'
 // Account storage key (same as Account.tsx)
 const ACCOUNT_KEY = 'cdt_user_account'
 
+// Get current month as "YYYY-MM" string
+function getCurrentMonth(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
 // Helper to update minutes used
 function updateMinutesUsed(durationSeconds: number): void {
   try {
     const saved = localStorage.getItem(ACCOUNT_KEY)
     if (saved) {
       const account = JSON.parse(saved)
+      const currentMonth = getCurrentMonth()
+
+      // Check if we need to reset monthly usage (only for paid tiers)
+      if (account.tier !== 'free' && account.lastResetMonth !== currentMonth) {
+        // New month - reset minutes used
+        account.minutesUsed = 0
+        account.lastResetMonth = currentMonth
+        console.log(`Monthly usage reset for ${currentMonth}`)
+      }
+
       // Convert seconds to minutes (round up to nearest minute)
       const minutesToAdd = Math.ceil(durationSeconds / 60)
       account.minutesUsed = (account.minutesUsed || 0) + minutesToAdd
+
+      // Update lastResetMonth if not set
+      if (!account.lastResetMonth) {
+        account.lastResetMonth = currentMonth
+      }
+
       localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account))
     }
   } catch (e) {
