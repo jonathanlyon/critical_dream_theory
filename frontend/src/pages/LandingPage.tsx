@@ -1,20 +1,10 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { SignInButton, SignUpButton } from '@clerk/clerk-react'
 import { useUser } from '../contexts/UserContext'
 
 // Check if Clerk is available
 const CLERK_AVAILABLE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-// Conditionally import Clerk components
-let SignInButton: any = null
-let SignUpButton: any = null
-
-if (CLERK_AVAILABLE) {
-  import('@clerk/clerk-react').then((module) => {
-    SignInButton = module.SignInButton
-    SignUpButton = module.SignUpButton
-  })
-}
 
 // Example dream transcript for demo
 const EXAMPLE_DREAM = {
@@ -459,9 +449,6 @@ function DevAuthButtons() {
 
 // Production auth buttons with Clerk
 function ClerkAuthButtons() {
-  // Dynamic import for Clerk components
-  const { SignInButton, SignUpButton } = require('@clerk/clerk-react')
-
   return (
     <div className="flex flex-col sm:flex-row gap-4 justify-center">
       <SignUpButton mode="modal">
