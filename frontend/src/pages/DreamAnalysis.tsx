@@ -440,8 +440,13 @@ export default function DreamAnalysis() {
             }
             analyzeClickedRef.current = true
             setIsAnalyzing(true)
-            // Navigate to analysis results
-            navigate('/analysis/results', { state: { fromRecording: true } })
+            // Navigate to analysis results with recording duration
+            navigate('/analysis/results', {
+              state: {
+                fromRecording: true,
+                recordingDurationSeconds: recordingTime
+              }
+            })
           }}
           isAnalyzing={isAnalyzing}
         />

@@ -1,6 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
+// Account storage key (same as Account.tsx)
+const ACCOUNT_KEY = 'cdt_user_account'
+
+// Helper to update minutes used
+function updateMinutesUsed(durationSeconds: number): void {
+  try {
+    const saved = localStorage.getItem(ACCOUNT_KEY)
+    if (saved) {
+      const account = JSON.parse(saved)
+      // Convert seconds to minutes (round up to nearest minute)
+      const minutesToAdd = Math.ceil(durationSeconds / 60)
+      account.minutesUsed = (account.minutesUsed || 0) + minutesToAdd
+      localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account))
+    }
+  } catch (e) {
+    console.error('Error updating minutes used:', e)
+  }
+}
+
 // Mock analysis data for demonstration
 const MOCK_ANALYSIS = {
   dreamId: 'dream_001',
@@ -167,8 +186,12 @@ export default function AnalysisResults() {
   // Privacy toggle state
   const [isPrivate, setIsPrivate] = useState(false)
 
-  // Check if we came from recording
+  // Check if we came from recording and get duration
   const fromRecording = location.state?.fromRecording || false
+  const recordingDurationSeconds = location.state?.recordingDurationSeconds || 0
+
+  // Track if we've already updated minutes (to prevent double-counting)
+  const hasUpdatedMinutesRef = useRef(false)
 
   useEffect(() => {
     if (isProcessing) {
@@ -180,6 +203,12 @@ export default function AnalysisResults() {
             setTimeout(() => {
               setIsProcessing(false)
               setAnalysis(MOCK_ANALYSIS)
+
+              // Update minutes used if we came from a new recording
+              if (fromRecording && recordingDurationSeconds > 0 && !hasUpdatedMinutesRef.current) {
+                hasUpdatedMinutesRef.current = true
+                updateMinutesUsed(recordingDurationSeconds)
+              }
             }, 500)
             return prev
           }
@@ -189,7 +218,7 @@ export default function AnalysisResults() {
 
       return () => clearInterval(interval)
     }
-  }, [isProcessing])
+  }, [isProcessing, fromRecording, recordingDurationSeconds])
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
