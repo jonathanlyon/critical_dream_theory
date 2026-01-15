@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { processDream } from '../lib/api'
 
 // Account storage key (same as Account.tsx)
 const ACCOUNT_KEY = 'cdt_user_account'
@@ -194,18 +195,72 @@ const PROCESSING_STEPS = [
   { name: 'Creating dream visualization', icon: 'image' }
 ]
 
+// Type for the analysis result that matches our API
+interface AnalysisData {
+  dreamId: string;
+  createdAt: string;
+  recordingDuration: number;
+  wordCount: number;
+  overview: {
+    emotionalTone: string;
+    dreamType: string;
+    dreamTypeConfidence: number;
+    title: string;
+    summary: string;
+  };
+  transcript: string;
+  manifestContent: {
+    characters: Array<{ name: string; role: string; familiarity: string }>;
+    settings: Array<{ location: string; familiarity: string }>;
+    actions: string[];
+    emotions: Array<{ emotion: string; intensity: number; context: string }>;
+    schredlScales: Record<string, { value: number | string; label: string; interpretation: string }>;
+  };
+  cdtAnalysis: {
+    vaultActivation: {
+      assessment: string;
+      recentMemories: string[];
+      distantMemories: string[];
+      interpretation: string;
+    };
+    cognitiveDrift: {
+      themes: Array<{ theme: string; confidence: number }>;
+      interpretation: string;
+    };
+    convergenceIndicators: {
+      present: boolean;
+      evidence: string;
+      resolutionType: string;
+    };
+    dreamTypeRationale: string;
+  };
+  archetypalResonances: {
+    threshold: { present: boolean; elements: string[]; reflection: string | null };
+    shadow: { present: boolean; elements: string[]; reflection: string | null };
+    animaAnimus: { present: boolean; elements: string[]; reflection: string | null };
+    selfWholeness: { present: boolean; elements: string[]; reflection: string | null };
+    scenarios: Array<{ name: string; description: string }>;
+  };
+  reflectivePrompts: Array<{ category: string; prompt: string; dreamConnection: string }>;
+  dreamImage: { url: string | null; prompt: string; status: string };
+}
+
 export default function AnalysisResults() {
   const navigate = useNavigate()
   const location = useLocation()
   const [isProcessing, setIsProcessing] = useState(true)
   const [currentStep, setCurrentStep] = useState(0)
-  const [analysis, setAnalysis] = useState<typeof MOCK_ANALYSIS | null>(null)
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['overview']))
+  const [processingError, setProcessingError] = useState<string | null>(null)
 
   // Audio player state
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioProgress, setAudioProgress] = useState(0)
   const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUrlRef = useRef<string | null>(null)
 
   // Privacy toggle state
   const [isPrivate, setIsPrivate] = useState(false)
@@ -213,36 +268,148 @@ export default function AnalysisResults() {
   // Check if we came from recording and get duration
   const fromRecording = location.state?.fromRecording || false
   const recordingDurationSeconds = location.state?.recordingDurationSeconds || 0
+  const hasAudioBlob = location.state?.hasAudioBlob || false
 
   // Track if we've already updated minutes (to prevent double-counting)
   const hasUpdatedMinutesRef = useRef(false)
+  const hasStartedProcessingRef = useRef(false)
 
+  // Retrieve audio blob from sessionStorage and process
   useEffect(() => {
-    if (isProcessing) {
-      // Simulate processing steps
-      const interval = setInterval(() => {
-        setCurrentStep(prev => {
-          if (prev >= PROCESSING_STEPS.length - 1) {
-            clearInterval(interval)
-            setTimeout(() => {
-              setIsProcessing(false)
-              setAnalysis(MOCK_ANALYSIS)
+    if (!isProcessing || hasStartedProcessingRef.current) return
+    hasStartedProcessingRef.current = true
 
-              // Update minutes used if we came from a new recording
-              if (fromRecording && recordingDurationSeconds > 0 && !hasUpdatedMinutesRef.current) {
-                hasUpdatedMinutesRef.current = true
-                updateMinutesUsed(recordingDurationSeconds)
-              }
-            }, 500)
-            return prev
+    const processAudio = async () => {
+      // Check if we have an audio blob to process
+      if (hasAudioBlob) {
+        try {
+          // Retrieve audio from sessionStorage
+          const base64Audio = sessionStorage.getItem('dreamAudioBlob')
+          // Note: audioType is stored but not currently used - could be used for blob creation if needed
+          sessionStorage.getItem('dreamAudioType') // Clear on retrieval
+
+          if (!base64Audio) {
+            throw new Error('No audio recording found')
           }
-          return prev + 1
-        })
-      }, 800)
 
-      return () => clearInterval(interval)
+          // Convert base64 back to blob
+          const response = await fetch(base64Audio)
+          const blob = await response.blob()
+          setAudioBlob(blob)
+
+          // Clean up sessionStorage
+          sessionStorage.removeItem('dreamAudioBlob')
+          sessionStorage.removeItem('dreamAudioType')
+
+          // Start processing with API
+          setCurrentStep(0)
+
+          // Call the API to process the dream
+          console.log('Processing dream with API...')
+          const result = await processDream(blob, recordingDurationSeconds, (step, progress) => {
+            console.log('Progress:', step, progress)
+            if (step.includes('Uploading')) setCurrentStep(0)
+          })
+
+          console.log('API Result:', result)
+
+          // Simulate step progression for visual feedback (API is done, just animating)
+          for (let i = 0; i < PROCESSING_STEPS.length; i++) {
+            setCurrentStep(i)
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+
+          // Convert API result to our analysis format
+          const analysisData: AnalysisData = {
+            dreamId: 'dream_' + Date.now(),
+            createdAt: new Date().toISOString(),
+            recordingDuration: result.recordingDuration || recordingDurationSeconds,
+            wordCount: result.wordCount,
+            overview: result.analysis.overview,
+            transcript: result.transcript,
+            manifestContent: result.analysis.manifestContent,
+            cdtAnalysis: result.analysis.cdtAnalysis,
+            archetypalResonances: result.analysis.archetypalResonances,
+            reflectivePrompts: result.analysis.reflectivePrompts,
+            dreamImage: {
+              url: null,
+              prompt: 'AI-generated visualization pending',
+              status: 'pending'
+            }
+          }
+
+          setAnalysis(analysisData)
+          setIsProcessing(false)
+
+          // Update minutes used
+          if (fromRecording && recordingDurationSeconds > 0 && !hasUpdatedMinutesRef.current) {
+            hasUpdatedMinutesRef.current = true
+            updateMinutesUsed(recordingDurationSeconds)
+          }
+
+        } catch (error) {
+          console.error('Error processing dream:', error)
+          setProcessingError(error instanceof Error ? error.message : 'Failed to process dream')
+          setIsProcessing(false)
+        }
+      } else {
+        // No audio blob - fall back to mock data for demo/testing
+        console.log('No audio blob, using mock data')
+        const interval = setInterval(() => {
+          setCurrentStep(prev => {
+            if (prev >= PROCESSING_STEPS.length - 1) {
+              clearInterval(interval)
+              setTimeout(() => {
+                setIsProcessing(false)
+                setAnalysis(MOCK_ANALYSIS)
+
+                if (fromRecording && recordingDurationSeconds > 0 && !hasUpdatedMinutesRef.current) {
+                  hasUpdatedMinutesRef.current = true
+                  updateMinutesUsed(recordingDurationSeconds)
+                }
+              }, 500)
+              return prev
+            }
+            return prev + 1
+          })
+        }, 800)
+
+        return () => clearInterval(interval)
+      }
     }
-  }, [isProcessing, fromRecording, recordingDurationSeconds])
+
+    processAudio()
+  }, [isProcessing, fromRecording, recordingDurationSeconds, hasAudioBlob])
+
+  // Set up audio element for playback
+  useEffect(() => {
+    if (audioBlob) {
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current)
+      }
+
+      const url = URL.createObjectURL(audioBlob)
+      audioUrlRef.current = url
+
+      const audio = new Audio(url)
+      audioRef.current = audio
+
+      audio.addEventListener('timeupdate', () => {
+        setAudioProgress(audio.currentTime)
+      })
+
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false)
+        setAudioProgress(0)
+      })
+    }
+
+    return () => {
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current)
+      }
+    }
+  }, [audioBlob])
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
@@ -262,40 +429,53 @@ export default function AnalysisResults() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Audio playback controls (simulated for mock data)
+  // Audio playback controls - use real audio if available, otherwise simulate
   const togglePlayback = () => {
-    if (isPlaying) {
-      // Pause
-      if (audioIntervalRef.current) {
-        clearInterval(audioIntervalRef.current)
-        audioIntervalRef.current = null
+    if (audioRef.current) {
+      // Real audio playback
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        audioRef.current.play()
+        setIsPlaying(true)
       }
-      setIsPlaying(false)
     } else {
-      // Play - simulate audio progress
-      setIsPlaying(true)
-      const duration = analysis?.recordingDuration || 127
-      audioIntervalRef.current = setInterval(() => {
-        setAudioProgress(prev => {
-          if (prev >= duration) {
-            if (audioIntervalRef.current) {
-              clearInterval(audioIntervalRef.current)
-              audioIntervalRef.current = null
+      // Simulated playback for mock data
+      if (isPlaying) {
+        if (audioIntervalRef.current) {
+          clearInterval(audioIntervalRef.current)
+          audioIntervalRef.current = null
+        }
+        setIsPlaying(false)
+      } else {
+        setIsPlaying(true)
+        const duration = analysis?.recordingDuration || 127
+        audioIntervalRef.current = setInterval(() => {
+          setAudioProgress(prev => {
+            if (prev >= duration) {
+              if (audioIntervalRef.current) {
+                clearInterval(audioIntervalRef.current)
+                audioIntervalRef.current = null
+              }
+              setIsPlaying(false)
+              return 0
             }
-            setIsPlaying(false)
-            return 0
-          }
-          return prev + 1
-        })
-      }, 1000)
+            return prev + 1
+          })
+        }, 1000)
+      }
     }
   }
 
-  // Cleanup audio interval on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (audioIntervalRef.current) {
         clearInterval(audioIntervalRef.current)
+      }
+      if (audioRef.current) {
+        audioRef.current.pause()
       }
     }
   }, [])
@@ -354,6 +534,37 @@ export default function AnalysisResults() {
                 </div>
               )
             })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error view
+  if (processingError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
+        <div className="w-full max-w-md text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Analysis Failed</h2>
+          <p className="text-gray-400 mb-6">{processingError}</p>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => navigate('/analysis')}
+              className="btn-primary"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={() => navigate('/journal')}
+              className="btn-ghost"
+            >
+              Go to Journal
+            </button>
           </div>
         </div>
       </div>

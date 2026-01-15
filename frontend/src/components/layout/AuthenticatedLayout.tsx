@@ -1,6 +1,7 @@
 import { ReactNode, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUser } from '../../contexts/UserContext'
+import * as ClerkReact from '@clerk/clerk-react'
 
 // Check if Clerk is available
 const CLERK_AVAILABLE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -85,15 +86,14 @@ function DevUserMenu() {
 
 // Clerk user button component (only loaded when Clerk is available)
 function ClerkUserMenu() {
-  const { useUser, UserButton } = require('@clerk/clerk-react')
-  const { user } = useUser()
+  const { user } = ClerkReact.useUser()
 
   return (
     <div className="flex items-center gap-4">
       <span className="hidden sm:block text-sm text-gray-400">
         {user?.firstName || 'Dreamer'}
       </span>
-      <UserButton
+      <ClerkReact.UserButton
         appearance={{
           elements: {
             avatarBox: 'w-9 h-9',
@@ -106,14 +106,12 @@ function ClerkUserMenu() {
 
 // Auth wrapper for Clerk
 function ClerkAuthWrapper({ children }: { children: ReactNode }) {
-  const { SignedIn, SignedOut, RedirectToSignIn } = require('@clerk/clerk-react')
-
   return (
     <>
-      <SignedIn>{children}</SignedIn>
-      <SignedOut>
-        <RedirectToSignIn />
-      </SignedOut>
+      <ClerkReact.SignedIn>{children}</ClerkReact.SignedIn>
+      <ClerkReact.SignedOut>
+        <ClerkReact.RedirectToSignIn />
+      </ClerkReact.SignedOut>
     </>
   )
 }

@@ -2,54 +2,78 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser, useRecordingLimit, TIER_CONFIGS, SubscriptionTier } from '../contexts/UserContext'
 
-// Recording Preview Component
+// Recording Preview Component with actual audio playback
 function RecordingPreview({
   duration,
+  audioBlob,
   onReRecord,
   onAnalyze,
   isAnalyzing
 }: {
   duration: number
+  audioBlob: Blob | null
   onReRecord: () => void
   onAnalyze: () => void
   isAnalyzing: boolean
 }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackTime, setPlaybackTime] = useState(0)
-  const intervalRef = useRef<number | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUrlRef = useRef<string | null>(null)
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
+    const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Create audio element and URL when blob changes
+  useEffect(() => {
+    if (audioBlob) {
+      // Clean up previous URL
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current)
+      }
+
+      const url = URL.createObjectURL(audioBlob)
+      audioUrlRef.current = url
+
+      const audio = new Audio(url)
+      audioRef.current = audio
+
+      audio.addEventListener('timeupdate', () => {
+        setPlaybackTime(audio.currentTime)
+      })
+
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false)
+        setPlaybackTime(0)
+      })
+    }
+
+    return () => {
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current)
+      }
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+    }
+  }, [audioBlob])
+
   const togglePlayback = () => {
+    if (!audioRef.current) return
+
     if (isPlaying) {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      audioRef.current.pause()
       setIsPlaying(false)
     } else {
+      audioRef.current.play()
       setIsPlaying(true)
-      intervalRef.current = window.setInterval(() => {
-        setPlaybackTime(prev => {
-          if (prev >= duration) {
-            if (intervalRef.current) clearInterval(intervalRef.current)
-            setIsPlaying(false)
-            return 0
-          }
-          return prev + 1
-        })
-      }, 1000)
     }
   }
 
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [])
-
-  const progress = (playbackTime / duration) * 100
+  const progress = duration > 0 ? (playbackTime / duration) * 100 : 0
 
   return (
     <div className="w-full max-w-md card mb-8">
@@ -89,7 +113,7 @@ function RecordingPreview({
           </div>
         </div>
 
-        {/* Simulated waveform */}
+        {/* Waveform visualization */}
         <div className="flex items-center justify-center gap-0.5 mt-4 h-8">
           {Array.from({ length: 50 }).map((_, i) => {
             const isActive = (i / 50) * 100 <= progress
@@ -151,12 +175,20 @@ export default function DreamAnalysis() {
   const timerRef = useRef<number | null>(null)
   const analyzeClickedRef = useRef(false)
 
+  // Audio recording refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+
   // Get tier-based recording limit
   const { maxSeconds } = useRecordingLimit()
   const { tier, setTier, tierConfig, isDevMode } = useUser()
   const maxTime = maxSeconds
 
-  // Simulated audio levels for visualization
+  // Audio levels for visualization - driven by actual audio input
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0.2))
 
   // Optional context state
@@ -218,10 +250,33 @@ export default function DreamAnalysis() {
     return { score, answeredCount, total: 15 }
   }
 
+  // Audio visualization using real audio data from analyser
   useEffect(() => {
     let animationFrame: number
 
-    if (isRecording && !isPaused) {
+    if (isRecording && !isPaused && analyserRef.current) {
+      const analyser = analyserRef.current
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+      const animate = () => {
+        analyser.getByteFrequencyData(dataArray)
+        // Convert frequency data to visualization levels
+        const newLevels = Array.from({ length: 32 }, (_, i) => {
+          const startIdx = Math.floor((i / 32) * dataArray.length)
+          const endIdx = Math.floor(((i + 1) / 32) * dataArray.length)
+          let sum = 0
+          for (let j = startIdx; j < endIdx; j++) {
+            sum += dataArray[j]
+          }
+          const avg = sum / (endIdx - startIdx)
+          return 0.1 + (avg / 255) * 0.9
+        })
+        setAudioLevels(newLevels)
+        animationFrame = requestAnimationFrame(animate)
+      }
+      animate()
+    } else if (isRecording && !isPaused) {
+      // Fallback if no analyser - use random animation
       const animate = () => {
         setAudioLevels(prev => prev.map(() => 0.2 + Math.random() * 0.8))
         animationFrame = requestAnimationFrame(animate)
@@ -254,32 +309,99 @@ export default function DreamAnalysis() {
     }
   }, [isRecording, isPaused])
 
-  const startRecording = () => {
-    setShowCountdown(true)
-    setCountdown(3)
+  const startRecording = async () => {
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
 
-    const countdownInterval = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(countdownInterval)
-          setShowCountdown(false)
-          setIsRecording(true)
-          setRecordingTime(0)
-          return 0
-        }
-        return prev - 1
+      // Set up audio context and analyser for visualization
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+      analyserRef.current = analyser
+
+      // Reset audio chunks
+      audioChunksRef.current = []
+      setAudioBlob(null)
+
+      // Create MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
       })
-    }, 1000)
+      mediaRecorderRef.current = mediaRecorder
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
+        setAudioBlob(blob)
+        console.log('Recording complete, blob size:', blob.size, 'bytes')
+      }
+
+      // Start countdown
+      setShowCountdown(true)
+      setCountdown(3)
+
+      const countdownInterval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval)
+            setShowCountdown(false)
+            setIsRecording(true)
+            setRecordingTime(0)
+            mediaRecorder.start(1000) // Collect data every second
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    } catch (error) {
+      console.error('Error starting recording:', error)
+      alert('Could not access microphone. Please ensure microphone permissions are granted.')
+    }
   }
 
   const stopRecording = () => {
     setIsRecording(false)
     setIsPaused(false)
     if (timerRef.current) clearInterval(timerRef.current)
+
+    // Stop MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+
+    // Stop audio stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+    }
+
+    // Close audio context
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+    }
   }
 
   const togglePause = () => {
-    setIsPaused(!isPaused)
+    if (!mediaRecorderRef.current) return
+
+    if (isPaused) {
+      // Resume recording
+      mediaRecorderRef.current.resume()
+      setIsPaused(false)
+    } else {
+      // Pause recording
+      mediaRecorderRef.current.pause()
+      setIsPaused(true)
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -424,29 +546,44 @@ export default function DreamAnalysis() {
       )}
 
       {/* After recording - show preview */}
-      {!isRecording && recordingTime > 0 && (
+      {!isRecording && recordingTime > 0 && audioBlob && (
         <RecordingPreview
           duration={recordingTime}
+          audioBlob={audioBlob}
           onReRecord={() => {
             if (!isAnalyzing) {
               setRecordingTime(0)
+              setAudioBlob(null)
+              audioChunksRef.current = []
               analyzeClickedRef.current = false
             }
           }}
           onAnalyze={() => {
             // Double-click protection - only process if not already analyzing
-            if (analyzeClickedRef.current || isAnalyzing) {
+            if (analyzeClickedRef.current || isAnalyzing || !audioBlob) {
               return
             }
             analyzeClickedRef.current = true
             setIsAnalyzing(true)
-            // Navigate to analysis results with recording duration
-            navigate('/analysis/results', {
-              state: {
-                fromRecording: true,
-                recordingDurationSeconds: recordingTime
-              }
-            })
+
+            // Store audio blob in sessionStorage for the results page to retrieve
+            // We need to convert to base64 for storage
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64Audio = reader.result as string
+              sessionStorage.setItem('dreamAudioBlob', base64Audio)
+              sessionStorage.setItem('dreamAudioType', audioBlob.type)
+
+              // Navigate to analysis results with recording duration
+              navigate('/analysis/results', {
+                state: {
+                  fromRecording: true,
+                  recordingDurationSeconds: recordingTime,
+                  hasAudioBlob: true
+                }
+              })
+            }
+            reader.readAsDataURL(audioBlob)
           }}
           isAnalyzing={isAnalyzing}
         />
