@@ -51,9 +51,17 @@ function saveAccount(account: UserAccount): void {
   }
 }
 
+// Email validation helper
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
 export default function Account() {
   const [account, setAccount] = useState<UserAccount>(defaultAccount)
   const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [emailError, setEmailError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
@@ -66,13 +74,27 @@ export default function Account() {
     const loaded = loadAccount()
     setAccount(loaded)
     setEditName(loaded.name)
+    setEditEmail(loaded.email)
   }, [])
 
   const handleSave = () => {
+    // Validate email before saving (in dev mode where email is editable)
+    if (DEV_MODE && editEmail !== account.email) {
+      if (!isValidEmail(editEmail)) {
+        setEmailError('Please enter a valid email address')
+        return
+      }
+    }
+
+    setEmailError(null)
     setIsSaving(true)
 
     setTimeout(() => {
-      const updatedAccount = { ...account, name: editName }
+      const updatedAccount = {
+        ...account,
+        name: editName,
+        ...(DEV_MODE && { email: editEmail })
+      }
       saveAccount(updatedAccount)
       setAccount(updatedAccount)
       setIsSaving(false)
@@ -83,8 +105,21 @@ export default function Account() {
     }, 300)
   }
 
+  // Handle email change with validation
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = e.target.value
+    setEditEmail(newEmail)
+
+    // Clear error when user starts typing valid format
+    if (emailError && isValidEmail(newEmail)) {
+      setEmailError(null)
+    }
+  }
+
   const handleCancel = () => {
     setEditName(account.name)
+    setEditEmail(account.email)
+    setEmailError(null)
     setIsEditing(false)
   }
 
@@ -193,12 +228,19 @@ export default function Account() {
                   <button
                     className="btn-primary touch-target"
                     onClick={handleSave}
-                    disabled={isSaving || editName === account.name || !editName.trim()}
+                    disabled={
+                      isSaving ||
+                      !editName.trim() ||
+                      (editName === account.name && editEmail === account.email)
+                    }
                   >
                     {isSaving ? 'Saving...' : 'Save Changes'}
                   </button>
                   {!editName.trim() && editName.length > 0 && (
                     <span className="text-red-400 text-sm self-center">Name cannot be empty or whitespace only</span>
+                  )}
+                  {emailError && (
+                    <span className="text-red-400 text-sm self-center">{emailError}</span>
                   )}
                 </div>
               )}
@@ -207,17 +249,45 @@ export default function Account() {
                 <label htmlFor="email" className="block font-medium text-gray-200 mb-2">
                   Email
                 </label>
-                <input
-                  type="email"
-                  id="email"
-                  className="input bg-dream-darker/50"
-                  value={account.email}
-                  disabled
-                  aria-label="Email address (read only)"
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  Email is managed through your authentication provider
-                </p>
+                {DEV_MODE && isEditing ? (
+                  <>
+                    <input
+                      type="email"
+                      id="email"
+                      className={`input ${emailError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
+                      value={editEmail}
+                      onChange={handleEmailChange}
+                      placeholder="your@email.com"
+                      aria-label="Email address"
+                      aria-invalid={!!emailError}
+                      aria-describedby={emailError ? 'email-error' : undefined}
+                    />
+                    {emailError && (
+                      <p id="email-error" className="text-sm text-red-400 mt-1" role="alert">
+                        {emailError}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-500 mt-1">
+                      Dev Mode: Email is editable for testing
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="email"
+                      id="email"
+                      className="input bg-dream-darker/50"
+                      value={account.email}
+                      disabled
+                      aria-label="Email address (read only)"
+                    />
+                    <p className="text-sm text-gray-500 mt-1">
+                      {DEV_MODE
+                        ? 'Click Edit to modify email (Dev Mode)'
+                        : 'Email is managed through your authentication provider'}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </section>
