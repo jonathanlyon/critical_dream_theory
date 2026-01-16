@@ -1,12 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '@clerk/clerk-react'
+import { getDreams, updateDream, deleteDream, type DreamListItem } from '../lib/api'
 
-// Helper to get relative dates for mock data
-function getRelativeDate(daysAgo: number): Date {
-  const date = new Date()
-  date.setDate(date.getDate() - daysAgo)
-  date.setHours(0, 0, 0, 0)
-  return date
+// Interface for transformed dream data used in UI
+interface DisplayDream {
+  id: string
+  title: string
+  dateObj: Date
+  dreamType: string
+  emotionalTone: string
+  excerpt: string
+  thumbnailGradient: string
+  thumbnailIcon: string
+  transcript?: string
+  analysis?: DreamListItem['analysis']
+  dreamImage?: DreamListItem['dreamImage']
 }
 
 // Format date for display
@@ -18,119 +27,49 @@ function formatDate(date: Date): string {
   })
 }
 
-// Mock dream data for development - using relative dates so filters work
-const MOCK_DREAMS = [
-  {
-    id: '1',
-    title: 'Flying Over Mountains',
-    dateObj: getRelativeDate(0), // Today
-    dreamType: 'Resolution',
-    emotionalTone: 'Positive',
-    excerpt: 'Soaring above snow-capped peaks with a profound sense of freedom. The air was crisp and I could see for miles...',
-    thumbnailGradient: 'from-indigo-600 to-purple-700',
-    thumbnailIcon: '🏔️'
-  },
-  {
-    id: '2',
-    title: 'The Morphing School',
-    dateObj: getRelativeDate(3), // 3 days ago (this week)
-    dreamType: 'Continuation',
-    emotionalTone: 'Mixed',
-    excerpt: 'Walking through hallways that kept shifting between my old school and grandmother\'s house. Each door led somewhere unexpected...',
-    thumbnailGradient: 'from-purple-600 to-pink-700',
-    thumbnailIcon: '🏫'
-  },
-  {
-    id: '3',
-    title: 'Ocean of Stars',
-    dateObj: getRelativeDate(5), // 5 days ago (this week)
-    dreamType: 'Generative',
-    emotionalTone: 'Positive',
-    excerpt: 'Swimming through an ocean that reflected the night sky. Each wave carried constellations that told ancient stories...',
-    thumbnailGradient: 'from-blue-600 to-cyan-700',
-    thumbnailIcon: '🌊'
-  },
-  {
-    id: '4',
-    title: 'Lost in the City',
-    dateObj: getRelativeDate(10), // 10 days ago (this month)
-    dreamType: 'Replay',
-    emotionalTone: 'Negative',
-    excerpt: 'Wandering through endless streets trying to find my way home. Every turn led to another unfamiliar neighborhood...',
-    thumbnailGradient: 'from-gray-600 to-slate-700',
-    thumbnailIcon: '🏙️'
-  },
-  {
-    id: '5',
-    title: 'The Talking Cat',
-    dateObj: getRelativeDate(20), // 20 days ago (this month)
-    dreamType: 'Residual',
-    emotionalTone: 'Neutral',
-    excerpt: 'A black cat appeared and started giving me advice about life decisions. Its wisdom felt both absurd and profound...',
-    thumbnailGradient: 'from-amber-600 to-orange-700',
-    thumbnailIcon: '🐱'
-  },
-  {
-    id: '6',
-    title: 'Childhood Garden',
-    dateObj: getRelativeDate(45), // 45 days ago (older)
-    dreamType: 'Resolution',
-    emotionalTone: 'Positive',
-    excerpt: 'Returned to the garden where I played as a child, but everything was giant-sized. Flowers towered like trees...',
-    thumbnailGradient: 'from-green-600 to-emerald-700',
-    thumbnailIcon: '🌸'
-  },
-  {
-    id: '7',
-    title: 'The Endless Library',
-    dateObj: getRelativeDate(50),
-    dreamType: 'Generative',
-    emotionalTone: 'Neutral',
-    excerpt: 'Wandering through a library with infinite shelves. Each book contained dreams I had forgotten...',
-    thumbnailGradient: 'from-brown-600 to-amber-700',
-    thumbnailIcon: '📚'
-  },
-  {
-    id: '8',
-    title: 'Dancing with Shadows',
-    dateObj: getRelativeDate(55),
-    dreamType: 'Resolution',
-    emotionalTone: 'Mixed',
-    excerpt: 'Shadow figures emerged from the walls and invited me to dance. Their movements were graceful yet unsettling...',
-    thumbnailGradient: 'from-slate-600 to-gray-700',
-    thumbnailIcon: '💃'
-  },
-  {
-    id: '9',
-    title: 'The Glass City',
-    dateObj: getRelativeDate(60),
-    dreamType: 'Lucid',
-    emotionalTone: 'Positive',
-    excerpt: 'A city made entirely of glass sparkled in the sunlight. I realized I was dreaming and began to fly between the towers...',
-    thumbnailGradient: 'from-sky-600 to-blue-700',
-    thumbnailIcon: '🏙️'
-  },
-  {
-    id: '10',
-    title: 'Underwater Kingdom',
-    dateObj: getRelativeDate(65),
-    dreamType: 'Continuation',
-    emotionalTone: 'Positive',
-    excerpt: 'I could breathe underwater and discovered an ancient kingdom ruled by wise sea creatures...',
-    thumbnailGradient: 'from-teal-600 to-cyan-700',
-    thumbnailIcon: '🐠'
-  },
-  {
-    id: '11',
-    title: 'The Incredibly Long Dream Title That Keeps Going and Going Until It Reaches Over One Hundred Characters to Test Truncation',
-    dateObj: getRelativeDate(70),
-    dreamType: 'Lucid',
-    emotionalTone: 'Positive',
-    excerpt: 'This dream was so complex that even its title needs to be truncated when displayed in the journal card view to ensure the layout does not break...',
-    thumbnailGradient: 'from-violet-600 to-purple-700',
-    thumbnailIcon: '✨'
+// Generate a gradient based on dream type
+function getGradientForDreamType(dreamType: string): string {
+  const gradients: Record<string, string> = {
+    'resolution': 'from-indigo-600 to-purple-700',
+    'replay': 'from-gray-600 to-slate-700',
+    'residual': 'from-amber-600 to-orange-700',
+    'generative': 'from-blue-600 to-cyan-700',
+    'continuation': 'from-purple-600 to-pink-700',
+    'lucid': 'from-sky-600 to-blue-700',
   }
-]
+  return gradients[dreamType?.toLowerCase()] || 'from-primary-600 to-secondary-700'
+}
+
+// Generate an icon based on dream type
+function getIconForDreamType(dreamType: string): string {
+  const icons: Record<string, string> = {
+    'resolution': '✨',
+    'replay': '🔄',
+    'residual': '💭',
+    'generative': '🌟',
+    'continuation': '📖',
+    'lucid': '🌙',
+  }
+  return icons[dreamType?.toLowerCase()] || '🌙'
+}
+
+// Transform API dream data to display format
+function transformApiDream(dream: DreamListItem): DisplayDream {
+  const createdDate = new Date(dream.createdAt)
+  return {
+    id: dream.id,
+    title: dream.title || 'Untitled Dream',
+    dateObj: createdDate,
+    dreamType: dream.dreamType || 'Unknown',
+    emotionalTone: dream.emotionalTone || 'Neutral',
+    excerpt: dream.transcript?.substring(0, 150) + '...' || 'No transcript available',
+    thumbnailGradient: getGradientForDreamType(dream.dreamType || ''),
+    thumbnailIcon: getIconForDreamType(dream.dreamType || ''),
+    transcript: dream.transcript,
+    analysis: dream.analysis,
+    dreamImage: dream.dreamImage,
+  }
+}
 
 // Get tone color based on emotional tone
 function getToneColor(tone: string) {
@@ -169,6 +108,7 @@ function getTypeBadgeColor(type: string) {
 export default function DreamJournal() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { getToken, isSignedIn, isLoaded } = useAuth()
 
   // Initialize filters from URL params
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
@@ -186,9 +126,57 @@ export default function DreamJournal() {
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
-  // In dev mode, show mock dreams; in prod, this would come from the database
-  const [dreams, setDreams] = useState(MOCK_DREAMS)
-  const [archivedDreams, setArchivedDreams] = useState<typeof MOCK_DREAMS>([])
+  // Dream data state - fetched from API
+  const [dreams, setDreams] = useState<DisplayDream[]>([])
+  const [archivedDreams, setArchivedDreams] = useState<DisplayDream[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch dreams from API
+  const fetchDreams = useCallback(async () => {
+    if (!isLoaded || !isSignedIn) {
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const token = await getToken()
+      const result = await getDreams(token || undefined)
+
+      // Transform API data to display format and separate active/archived
+      const activeDreams: DisplayDream[] = []
+      const archived: DisplayDream[] = []
+
+      result.dreams.forEach((dream) => {
+        const displayDream = transformApiDream(dream)
+        if (dream.isArchived) {
+          archived.push(displayDream)
+        } else {
+          activeDreams.push(displayDream)
+        }
+      })
+
+      // Sort by date (newest first)
+      activeDreams.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())
+      archived.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())
+
+      setDreams(activeDreams)
+      setArchivedDreams(archived)
+    } catch (err) {
+      console.error('Failed to fetch dreams:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load dreams')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [isLoaded, isSignedIn, getToken])
+
+  // Initial fetch
+  useEffect(() => {
+    fetchDreams()
+  }, [fetchDreams])
 
   // Sync URL params when filters or page change
   useEffect(() => {
@@ -213,28 +201,55 @@ export default function DreamJournal() {
     setCurrentPage(1)
   }, [searchQuery, dateFilter, typeFilter, toneFilter])
 
-  // Archive a dream (soft delete)
-  const archiveDream = (dreamId: string) => {
-    const dreamToArchive = dreams.find(d => d.id === dreamId)
-    if (dreamToArchive) {
-      setArchivedDreams(prev => [...prev, dreamToArchive])
-      setDreams(prev => prev.filter(d => d.id !== dreamId))
+  // Archive a dream (soft delete) - calls API
+  const archiveDream = async (dreamId: string) => {
+    try {
+      const token = await getToken()
+      await updateDream(dreamId, { isArchived: true }, token || undefined)
+
+      // Update local state
+      const dreamToArchive = dreams.find(d => d.id === dreamId)
+      if (dreamToArchive) {
+        setArchivedDreams(prev => [...prev, dreamToArchive])
+        setDreams(prev => prev.filter(d => d.id !== dreamId))
+      }
+    } catch (err) {
+      console.error('Failed to archive dream:', err)
+      setError(err instanceof Error ? err.message : 'Failed to archive dream')
     }
     setArchiveConfirmId(null)
   }
 
-  // Restore a dream from archive
-  const restoreDream = (dreamId: string) => {
-    const dreamToRestore = archivedDreams.find(d => d.id === dreamId)
-    if (dreamToRestore) {
-      setDreams(prev => [...prev, dreamToRestore].sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime()))
-      setArchivedDreams(prev => prev.filter(d => d.id !== dreamId))
+  // Restore a dream from archive - calls API
+  const restoreDream = async (dreamId: string) => {
+    try {
+      const token = await getToken()
+      await updateDream(dreamId, { isArchived: false }, token || undefined)
+
+      // Update local state
+      const dreamToRestore = archivedDreams.find(d => d.id === dreamId)
+      if (dreamToRestore) {
+        setDreams(prev => [...prev, dreamToRestore].sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime()))
+        setArchivedDreams(prev => prev.filter(d => d.id !== dreamId))
+      }
+    } catch (err) {
+      console.error('Failed to restore dream:', err)
+      setError(err instanceof Error ? err.message : 'Failed to restore dream')
     }
   }
 
-  // Permanently delete a dream
-  const permanentlyDeleteDream = (dreamId: string) => {
-    setArchivedDreams(prev => prev.filter(d => d.id !== dreamId))
+  // Permanently delete a dream - calls API
+  const permanentlyDeleteDream = async (dreamId: string) => {
+    try {
+      const token = await getToken()
+      await deleteDream(dreamId, token || undefined)
+
+      // Update local state
+      setArchivedDreams(prev => prev.filter(d => d.id !== dreamId))
+    } catch (err) {
+      console.error('Failed to delete dream:', err)
+      setError(err instanceof Error ? err.message : 'Failed to delete dream')
+    }
     setDeleteConfirmId(null)
   }
 
@@ -325,9 +340,45 @@ export default function DreamJournal() {
     return pages
   }
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex-1 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-gray-400">Loading your dreams...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 p-6">
       <div className="max-w-6xl mx-auto">
+        {/* Error banner */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-950/50 border border-red-900 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2 text-red-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-400 hover:text-red-300"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Page Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -341,17 +392,28 @@ export default function DreamJournal() {
               }
             </p>
           </div>
-          {archivedDreams.length > 0 && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowArchived(!showArchived)}
+              onClick={fetchDreams}
               className="btn-ghost text-sm flex items-center gap-2"
+              title="Refresh dreams"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              {showArchived ? 'View Active' : `View Archived (${archivedDreams.length})`}
             </button>
-          )}
+            {archivedDreams.length > 0 && (
+              <button
+                onClick={() => setShowArchived(!showArchived)}
+                className="btn-ghost text-sm flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                {showArchived ? 'View Active' : `View Archived (${archivedDreams.length})`}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Header with Search and Filters */}

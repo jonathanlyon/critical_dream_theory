@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { processDream } from '../lib/api'
+import { useAuth } from '@clerk/clerk-react'
+import { processDream, getDream, updateDream } from '../lib/api'
 
 // Account storage key (same as Account.tsx)
 const ACCOUNT_KEY = 'cdt_user_account'
@@ -254,6 +255,7 @@ interface AnalysisData {
 export default function AnalysisResults() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { getToken } = useAuth()
   const [isProcessing, setIsProcessing] = useState(true)
   const [currentStep, setCurrentStep] = useState(0)
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
@@ -271,17 +273,101 @@ export default function AnalysisResults() {
   // Privacy toggle state
   const [isPrivate, setIsPrivate] = useState(false)
 
+  // Title editing state
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [editedTitle, setEditedTitle] = useState('')
+  const [isSavingTitle, setIsSavingTitle] = useState(false)
+  const [loadedDreamId, setLoadedDreamId] = useState<string | null>(null)
+
   // Check if we came from recording and get duration
   const fromRecording = location.state?.fromRecording || false
   const recordingDurationSeconds = location.state?.recordingDurationSeconds || 0
   const hasAudioBlob = location.state?.hasAudioBlob || false
+  const existingDreamId = location.state?.dreamId || null
 
   // Track if we've already updated minutes (to prevent double-counting)
   const hasUpdatedMinutesRef = useRef(false)
   const hasStartedProcessingRef = useRef(false)
 
+  // Load existing dream from API if dreamId is provided
+  useEffect(() => {
+    if (!existingDreamId || hasStartedProcessingRef.current) return
+    hasStartedProcessingRef.current = true
+
+    const loadExistingDream = async () => {
+      try {
+        const token = await getToken()
+        const result = await getDream(existingDreamId, token || undefined)
+        const dream = result.dream
+
+        // Convert API dream data to AnalysisData format
+        const analysisData: AnalysisData = {
+          dreamId: dream.id,
+          createdAt: dream.createdAt,
+          recordingDuration: dream.recordingDuration || 0,
+          wordCount: dream.wordCount || 0,
+          overview: dream.analysis?.overview || {
+            emotionalTone: dream.emotionalTone || 'Unknown',
+            dreamType: dream.dreamType || 'Unknown',
+            dreamTypeConfidence: dream.dreamTypeConfidence || 0,
+            title: dream.title || 'Untitled Dream',
+            summary: ''
+          },
+          transcript: dream.transcript || '',
+          manifestContent: dream.analysis?.manifestContent || {
+            characters: [],
+            settings: [],
+            actions: [],
+            emotions: [],
+            schredlScales: {
+              dreamLength: { value: 0, label: 'Unknown', interpretation: '' },
+              realism: { value: 0, label: 'Unknown', interpretation: '' },
+              emotionalIntensityPositive: { value: 0, label: 'Unknown', interpretation: '' },
+              emotionalIntensityNegative: { value: 0, label: 'Unknown', interpretation: '' },
+              clarity: { value: 0, label: 'Unknown', interpretation: '' },
+              selfParticipation: { value: 0, label: 'Unknown', interpretation: '' },
+              socialDensity: { value: 0, label: 'Unknown', interpretation: '' },
+              agency: { value: 0, label: 'Unknown', interpretation: '' },
+              narrativeCoherence: { value: 0, label: 'Unknown', interpretation: '' }
+            }
+          },
+          cdtAnalysis: dream.analysis?.cdtAnalysis || {
+            vaultActivation: { assessment: '', recentMemories: [], distantMemories: [], interpretation: '' },
+            cognitiveDrift: { themes: [], interpretation: '' },
+            convergenceIndicators: { present: false, evidence: '', resolutionType: '' },
+            dreamTypeRationale: ''
+          },
+          archetypalResonances: dream.analysis?.archetypalResonances || {
+            threshold: { present: false, elements: [], reflection: null },
+            shadow: { present: false, elements: [], reflection: null },
+            animaAnimus: { present: false, elements: [], reflection: null },
+            selfWholeness: { present: false, elements: [], reflection: null },
+            scenarios: []
+          },
+          reflectivePrompts: dream.analysis?.reflectivePrompts || [],
+          dreamImage: dream.dreamImage || { url: null, prompt: '', status: 'pending' },
+          prosody: dream.prosody || null
+        }
+
+        setAnalysis(analysisData)
+        setLoadedDreamId(dream.id)
+        setEditedTitle(dream.title || 'Untitled Dream')
+        setIsPrivate(dream.isPrivate || false)
+        setIsProcessing(false)
+      } catch (error) {
+        console.error('Error loading dream:', error)
+        setProcessingError(error instanceof Error ? error.message : 'Failed to load dream')
+        setIsProcessing(false)
+      }
+    }
+
+    loadExistingDream()
+  }, [existingDreamId, getToken])
+
   // Retrieve audio blob from sessionStorage and process
   useEffect(() => {
+    // Skip if we're loading an existing dream
+    if (existingDreamId) return
     if (!isProcessing || hasStartedProcessingRef.current) return
     hasStartedProcessingRef.current = true
 
@@ -670,7 +756,72 @@ export default function AnalysisResults() {
                 </span>
               </div>
 
-              <h1 className="text-2xl font-bold mb-2">{analysis.overview.title}</h1>
+              {/* Title with edit functionality */}
+              {isEditingTitle && loadedDreamId ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    className="input text-xl font-bold flex-1"
+                    aria-label="Edit dream title"
+                    autoFocus
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!loadedDreamId || !editedTitle.trim()) return
+                      setIsSavingTitle(true)
+                      try {
+                        const token = await getToken()
+                        await updateDream(loadedDreamId, { title: editedTitle.trim() }, token || undefined)
+                        // Update the analysis state with new title
+                        setAnalysis(prev => prev ? {
+                          ...prev,
+                          overview: { ...prev.overview, title: editedTitle.trim() }
+                        } : null)
+                        setIsEditingTitle(false)
+                      } catch (error) {
+                        console.error('Error saving title:', error)
+                        alert('Failed to save title. Please try again.')
+                      } finally {
+                        setIsSavingTitle(false)
+                      }
+                    }}
+                    disabled={isSavingTitle || !editedTitle.trim()}
+                    className="btn-primary px-3 py-1 text-sm"
+                  >
+                    {isSavingTitle ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditedTitle(analysis.overview.title)
+                      setIsEditingTitle(false)
+                    }}
+                    disabled={isSavingTitle}
+                    className="btn-ghost px-3 py-1 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-2 group">
+                  <h1 className="text-2xl font-bold">{analysis.overview.title}</h1>
+                  {loadedDreamId && (
+                    <button
+                      onClick={() => {
+                        setEditedTitle(analysis.overview.title)
+                        setIsEditingTitle(true)
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-white"
+                      aria-label="Edit title"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
               <p className="text-gray-400 mb-4">{analysis.overview.summary}</p>
 
               <div className="flex flex-wrap gap-4 text-sm text-gray-500">

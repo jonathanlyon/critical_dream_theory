@@ -268,3 +268,161 @@ export async function getCheckoutSession(
 
   return response.json();
 }
+
+// ============================================
+// DREAM CRUD API (with authentication)
+// ============================================
+
+export interface DreamListItem {
+  id: string;
+  title: string;
+  transcript?: string;
+  wordCount?: number;
+  recordingDuration?: number;
+  emotionalTone?: string;
+  dreamType?: string;
+  dreamTypeConfidence?: number;
+  analysis?: DreamAnalysis;
+  prosody?: ProsodyAnalysis;
+  dreamImage?: DreamImage;
+  createdAt: string;
+  isArchived: boolean;
+  isPrivate: boolean;
+}
+
+export interface DreamsListResult {
+  dreams: DreamListItem[];
+  total: number;
+  message: string;
+}
+
+export interface DreamDetailResult {
+  dream: DreamListItem;
+  message: string;
+}
+
+// Get list of user's dreams (requires authentication)
+export async function getDreams(authToken?: string): Promise<DreamsListResult> {
+  const headers: HeadersInit = {};
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/dreams`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to fetch dreams');
+  }
+
+  return response.json();
+}
+
+// Get a single dream by ID (requires authentication)
+export async function getDream(dreamId: string, authToken?: string): Promise<DreamDetailResult> {
+  const headers: HeadersInit = {};
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/dreams/${dreamId}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to fetch dream');
+  }
+
+  return response.json();
+}
+
+// Update a dream (requires authentication)
+export async function updateDream(
+  dreamId: string,
+  updates: Partial<Pick<DreamListItem, 'title' | 'isArchived' | 'isPrivate'>>,
+  authToken?: string
+): Promise<DreamDetailResult> {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/dreams/${dreamId}`, {
+    method: 'PATCH',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to update dream');
+  }
+
+  return response.json();
+}
+
+// Delete a dream (requires authentication)
+export async function deleteDream(dreamId: string, authToken?: string): Promise<{ success: boolean; message: string }> {
+  const headers: HeadersInit = {};
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/dreams/${dreamId}`, {
+    method: 'DELETE',
+    headers,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to delete dream');
+  }
+
+  return response.json();
+}
+
+// Process dream with authentication
+export async function processDreamWithAuth(
+  audioBlob: Blob,
+  duration: number,
+  authToken?: string,
+  onProgress?: (step: string, progress: number) => void
+): Promise<ProcessDreamResult & { dreamId: string }> {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  formData.append('duration', duration.toString());
+
+  onProgress?.('Uploading audio...', 10);
+
+  const headers: HeadersInit = {};
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/process-dream`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Dream processing failed');
+  }
+
+  onProgress?.('Processing complete', 100);
+
+  return response.json();
+}

@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 import { Buffer } from 'buffer';
 import { clerkMiddleware, requireAuth, getAuth } from '@clerk/express';
+import Database from 'better-sqlite3';
 
 // Load environment variables from parent directory
 const __filename = fileURLToPath(import.meta.url);
@@ -331,25 +332,63 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// In-memory dream store for demonstration (would be Convex in production)
-// Key: dreamId, Value: { userId, dreamData }
-const dreamStore = new Map();
-let nextDreamId = 1;
+// ============================================
+// SQLite DATABASE SETUP
+// ============================================
+const dbPath = join(__dirname, 'dreams.db');
+const db = new Database(dbPath);
+
+// Initialize database schema
+db.exec(`
+  CREATE TABLE IF NOT EXISTS dreams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId TEXT NOT NULL,
+    title TEXT,
+    transcript TEXT,
+    wordCount INTEGER,
+    recordingDuration INTEGER,
+    emotionalTone TEXT,
+    dreamType TEXT,
+    dreamTypeConfidence REAL,
+    analysis TEXT,
+    prosody TEXT,
+    dreamImage TEXT,
+    isArchived INTEGER DEFAULT 0,
+    isPrivate INTEGER DEFAULT 0,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create index for userId queries
+db.exec(`CREATE INDEX IF NOT EXISTS idx_dreams_userId ON dreams(userId)`);
+
+console.log('SQLite database initialized at:', dbPath);
 
 // Helper function to check dream ownership
 const checkDreamOwnership = (dreamId, userId) => {
-  const dream = dreamStore.get(dreamId);
+  const dream = db.prepare('SELECT * FROM dreams WHERE id = ?').get(dreamId);
   if (!dream) {
     return { exists: false, owned: false };
   }
   return { exists: true, owned: dream.userId === userId, dream: dream };
 };
 
+// Helper to serialize JSON fields
+const serializeDream = (dream) => ({
+  ...dream,
+  analysis: dream.analysis ? JSON.parse(dream.analysis) : null,
+  prosody: dream.prosody ? JSON.parse(dream.prosody) : null,
+  dreamImage: dream.dreamImage ? JSON.parse(dream.dreamImage) : null,
+  isArchived: Boolean(dream.isArchived),
+  isPrivate: Boolean(dream.isPrivate),
+});
+
 // ============================================
-// TEST ENDPOINTS (Development only - for verifying security)
+// TEST ENDPOINTS (Development only - for verifying security and persistence)
 // ============================================
 
-// Test endpoint to simulate dream isolation scenario
+// Test endpoint to simulate dream isolation scenario (using SQLite)
 // This endpoint is only for testing purposes and should be disabled in production
 app.post('/api/test/dream-isolation', (req, res) => {
   if (process.env.NODE_ENV === 'production') {
@@ -360,16 +399,13 @@ app.post('/api/test/dream-isolation', (req, res) => {
   const userAId = 'test_user_A';
   const userBId = 'test_user_B';
 
-  // Create a dream for User A
-  const dreamId = 'test_dream_' + Date.now();
-  dreamStore.set(dreamId, {
-    userId: userAId,
-    data: {
-      title: 'User A Secret Dream',
-      content: 'This dream belongs to User A and should not be visible to User B',
-      createdAt: new Date().toISOString()
-    }
-  });
+  // Create a dream for User A in SQLite
+  const stmt = db.prepare(`
+    INSERT INTO dreams (userId, title, transcript, createdAt, updatedAt)
+    VALUES (?, ?, ?, datetime('now'), datetime('now'))
+  `);
+  const result = stmt.run(userAId, 'User A Secret Dream', 'This dream belongs to User A and should not be visible to User B');
+  const dreamId = result.lastInsertRowid;
 
   // Test 1: User A can access their own dream
   const userAAccess = checkDreamOwnership(dreamId, userAId);
@@ -378,12 +414,12 @@ app.post('/api/test/dream-isolation', (req, res) => {
   const userBAccess = checkDreamOwnership(dreamId, userBId);
 
   // Clean up test dream
-  dreamStore.delete(dreamId);
+  db.prepare('DELETE FROM dreams WHERE id = ?').run(dreamId);
 
   res.json({
     testResults: {
       dreamCreated: true,
-      dreamId: dreamId,
+      dreamId: String(dreamId),
       userACanAccess: userAAccess.exists && userAAccess.owned,
       userBCanAccess: userBAccess.exists && userBAccess.owned,
       isolationWorking: userAAccess.owned && !userBAccess.owned
@@ -391,6 +427,318 @@ app.post('/api/test/dream-isolation', (req, res) => {
     message: userAAccess.owned && !userBAccess.owned
       ? 'Dream isolation is working correctly - User B cannot access User A\'s dream'
       : 'ERROR: Dream isolation is NOT working!'
+  });
+});
+
+// Test endpoint to verify SQLite persistence
+// This endpoint is only for testing purposes and should be disabled in production
+app.post('/api/test/persistence', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const testUserId = 'test_persistence_user';
+  const uniquePhrase = req.body.phrase || 'TEST_UNIQUE_' + Date.now();
+
+  // Step 1: Create a dream with the unique phrase
+  const insertStmt = db.prepare(`
+    INSERT INTO dreams (userId, title, transcript, emotionalTone, dreamType, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+  `);
+  const insertResult = insertStmt.run(
+    testUserId,
+    'Test Dream: ' + uniquePhrase,
+    'Dream transcript containing ' + uniquePhrase,
+    'Positive',
+    'Resolution'
+  );
+  const dreamId = insertResult.lastInsertRowid;
+
+  // Step 2: Verify the dream can be retrieved
+  const dream = db.prepare('SELECT * FROM dreams WHERE id = ?').get(dreamId);
+
+  // Step 3: Verify the unique phrase is in the dream
+  const phraseFound = dream && (
+    dream.title.includes(uniquePhrase) ||
+    (dream.transcript && dream.transcript.includes(uniquePhrase))
+  );
+
+  // Step 4: Verify we can list user's dreams
+  const userDreams = db.prepare('SELECT * FROM dreams WHERE userId = ?').all(testUserId);
+  const dreamInList = userDreams.some(d => d.id === dreamId);
+
+  // Clean up: delete the test dream
+  db.prepare('DELETE FROM dreams WHERE id = ?').run(dreamId);
+
+  // Verify it was deleted
+  const deletedDream = db.prepare('SELECT * FROM dreams WHERE id = ?').get(dreamId);
+
+  res.json({
+    testResults: {
+      dreamCreated: !!dream,
+      dreamId: String(dreamId),
+      uniquePhraseFound: phraseFound,
+      dreamInUserList: dreamInList,
+      totalUserDreamsFound: userDreams.length,
+      dreamDeleted: !deletedDream,
+      persistenceWorking: !!dream && phraseFound && dreamInList && !deletedDream
+    },
+    dream: dream ? serializeDream(dream) : null,
+    message: !!dream && phraseFound && dreamInList && !deletedDream
+      ? 'SQLite persistence is working correctly!'
+      : 'ERROR: Persistence test failed!'
+  });
+});
+
+// Test endpoint to create a persistent dream (without cleanup) for restart testing
+app.post('/api/test/create-persistent-dream', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const testUserId = 'persist_test_user';
+  const uniquePhrase = req.body.phrase || 'PERSIST_' + Date.now();
+
+  // Create a dream that won't be deleted
+  const insertStmt = db.prepare(`
+    INSERT INTO dreams (userId, title, transcript, emotionalTone, dreamType, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+  `);
+  const insertResult = insertStmt.run(
+    testUserId,
+    'Persistent Dream: ' + uniquePhrase,
+    'This dream should survive server restarts. Unique phrase: ' + uniquePhrase,
+    'Positive',
+    'Generative'
+  );
+  const dreamId = insertResult.lastInsertRowid;
+
+  res.json({
+    success: true,
+    dreamId: String(dreamId),
+    userId: testUserId,
+    uniquePhrase,
+    message: 'Dream created and will persist across server restarts'
+  });
+});
+
+// Test endpoint to check if persistent dreams still exist after restart
+app.get('/api/test/check-persistent-dreams', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const testUserId = 'persist_test_user';
+  const dreams = db.prepare('SELECT * FROM dreams WHERE userId = ?').all(testUserId);
+
+  res.json({
+    success: true,
+    count: dreams.length,
+    dreams: dreams.map(d => serializeDream(d)),
+    message: dreams.length > 0
+      ? `Found ${dreams.length} persistent dream(s)!`
+      : 'No persistent dreams found'
+  });
+});
+
+// Test endpoint to clean up persistent test dreams
+app.delete('/api/test/cleanup-persistent-dreams', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const testUserId = 'persist_test_user';
+  const result = db.prepare('DELETE FROM dreams WHERE userId = ?').run(testUserId);
+
+  res.json({
+    success: true,
+    deletedCount: result.changes,
+    message: `Deleted ${result.changes} persistent test dream(s)`
+  });
+});
+
+// Test endpoint to create a dream for ANY user (for testing UI persistence)
+// This bypasses audio recording requirement for testing
+app.post('/api/test/create-dream-for-user', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const { userId, phrase } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  const uniquePhrase = phrase || 'TEST_UNIQUE_' + Date.now();
+
+  // Create a complete analysis object for realistic testing
+  const mockAnalysis = {
+    overview: {
+      title: 'Test Dream: ' + uniquePhrase,
+      emotionalTone: 'Positive with undertones of wonder',
+      dreamType: 'Generative',
+      dreamTypeConfidence: 0.85,
+      summary: 'A test dream containing the unique phrase: ' + uniquePhrase
+    },
+    manifestContent: {
+      characters: [{ name: 'The Dreamer', role: 'Protagonist', familiarity: 'Self' }],
+      settings: [{ location: 'A mystical testing environment', familiarity: 'Unfamiliar' }],
+      actions: ['Testing persistence', 'Verifying database functionality'],
+      emotions: [{ emotion: 'Curiosity', intensity: 4, context: 'Testing features' }],
+      schredlScales: {
+        dreamLength: { value: 50, label: 'Medium', interpretation: 'Moderate length' },
+        realism: { value: 3, label: 'Moderately Realistic', interpretation: 'Some surreal elements' },
+        emotionalIntensityPositive: { value: 3, label: 'Moderate', interpretation: 'Pleasant' },
+        emotionalIntensityNegative: { value: 1, label: 'Low', interpretation: 'Minimal distress' },
+        clarity: { value: 4, label: 'Clear', interpretation: 'Well-remembered' },
+        selfParticipation: { value: 5, label: 'Active', interpretation: 'Fully engaged' },
+        socialDensity: { value: 2, label: 'Low', interpretation: 'Few characters' },
+        agency: { value: 4, label: 'High', interpretation: 'In control' },
+        narrativeCoherence: { value: 4, label: 'Coherent', interpretation: 'Clear narrative' }
+      }
+    },
+    cdtAnalysis: {
+      vaultActivation: {
+        assessment: 'Testing vault activation',
+        recentMemories: ['Test implementation'],
+        distantMemories: ['Past testing experiences'],
+        interpretation: 'Memory test complete'
+      },
+      cognitiveDrift: {
+        themes: [{ theme: 'Testing', confidence: 0.9 }],
+        interpretation: 'Test-oriented drift'
+      },
+      convergenceIndicators: {
+        present: true,
+        evidence: 'Test evidence',
+        resolutionType: 'Verification'
+      },
+      dreamTypeRationale: 'Generated for testing purposes'
+    },
+    archetypalResonances: {
+      threshold: { present: true, elements: ['Test threshold'], reflection: 'Testing boundary' },
+      shadow: { present: false, elements: [], reflection: null },
+      animaAnimus: { present: false, elements: [], reflection: null },
+      selfWholeness: { present: true, elements: ['Complete test'], reflection: 'Testing wholeness' },
+      scenarios: [{ name: 'Testing Journey', description: 'A quest for verification' }]
+    },
+    reflectivePrompts: [
+      { category: 'Exploration', prompt: 'What does this test reveal?', dreamConnection: 'Overall dream' }
+    ]
+  };
+
+  // Create a dream with complete data
+  const insertStmt = db.prepare(`
+    INSERT INTO dreams (
+      userId, title, transcript, wordCount, recordingDuration,
+      emotionalTone, dreamType, dreamTypeConfidence,
+      analysis, prosody, dreamImage, isArchived, isPrivate,
+      createdAt, updatedAt
+    ) VALUES (
+      ?, ?, ?, ?, ?,
+      ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      datetime('now'), datetime('now')
+    )
+  `);
+
+  const insertResult = insertStmt.run(
+    userId,
+    'Test Dream: ' + uniquePhrase,
+    'This is a test dream transcript containing the unique phrase: ' + uniquePhrase + '. The dream involves testing database persistence and verifying that dreams survive server restarts.',
+    25,
+    30,
+    'Positive with undertones of wonder',
+    'Generative',
+    0.85,
+    JSON.stringify(mockAnalysis),
+    null,
+    JSON.stringify({ url: null, prompt: 'Test dream visualization', status: 'pending' }),
+    0,
+    0
+  );
+
+  const dreamId = insertResult.lastInsertRowid;
+
+  res.json({
+    success: true,
+    dreamId: String(dreamId),
+    userId,
+    uniquePhrase,
+    message: 'Dream created for user ' + userId + '. The dream will appear in their Dream Journal.'
+  });
+});
+
+// Test endpoint to check if a dream exists by ID (for deletion verification)
+app.get('/api/test/dream-exists/:id', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const dreamId = req.params.id;
+  const dream = db.prepare('SELECT id, title, userId, createdAt, updatedAt FROM dreams WHERE id = ?').get(dreamId);
+
+  res.json({
+    exists: !!dream,
+    dreamId,
+    dream: dream ? {
+      id: dream.id,
+      title: dream.title,
+      userId: dream.userId,
+      createdAt: dream.createdAt,
+      updatedAt: dream.updatedAt
+    } : null
+  });
+});
+
+// Test endpoint to delete a dream by ID (for testing deletion while viewing)
+app.delete('/api/test/delete-dream/:id', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const dreamId = req.params.id;
+  const result = db.prepare('DELETE FROM dreams WHERE id = ?').run(dreamId);
+
+  res.json({
+    success: result.changes > 0,
+    dreamId,
+    deleted: result.changes > 0,
+    message: result.changes > 0
+      ? `Dream ${dreamId} deleted successfully`
+      : `Dream ${dreamId} not found`
+  });
+});
+
+// Test endpoint to update dream title (for testing concurrent edits)
+app.patch('/api/test/update-dream/:id', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const dreamId = req.params.id;
+  const { title } = req.body;
+
+  if (!title) {
+    return res.status(400).json({ error: 'title is required' });
+  }
+
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const result = db.prepare('UPDATE dreams SET title = ?, updatedAt = ? WHERE id = ?').run(title, now, dreamId);
+
+  if (result.changes === 0) {
+    return res.status(404).json({ error: 'Dream not found' });
+  }
+
+  const updatedDream = db.prepare('SELECT id, title, updatedAt FROM dreams WHERE id = ?').get(dreamId);
+
+  res.json({
+    success: true,
+    dreamId,
+    title: updatedDream.title,
+    updatedAt: updatedDream.updatedAt,
+    message: `Dream ${dreamId} updated successfully`
   });
 });
 
@@ -402,13 +750,9 @@ app.post('/api/test/dream-isolation', (req, res) => {
 app.get('/api/dreams', requireAuthentication, (req, res) => {
   const userId = req.userId;
 
-  // Filter dreams to only return those owned by the current user
-  const userDreams = [];
-  dreamStore.forEach((dream, id) => {
-    if (dream.userId === userId) {
-      userDreams.push({ id, ...dream.data });
-    }
-  });
+  // Get dreams from SQLite
+  const rows = db.prepare('SELECT * FROM dreams WHERE userId = ? ORDER BY createdAt DESC').all(userId);
+  const userDreams = rows.map(row => serializeDream(row));
 
   res.json({
     dreams: userDreams,
@@ -425,25 +769,17 @@ app.post('/api/dreams/upload', requireAuthentication, upload.single('audio'), (r
     return res.status(400).json({ error: 'No audio file provided' });
   }
 
-  // Create a new dream record
-  const dreamId = String(nextDreamId++);
-  const dreamData = {
-    title: 'New Dream Recording',
-    filename: req.file.filename,
-    size: req.file.size,
-    mimetype: req.file.mimetype,
-    createdAt: new Date().toISOString()
-  };
-
-  // Store dream with user ownership
-  dreamStore.set(dreamId, {
-    userId: userId,
-    data: dreamData
-  });
+  // Insert into SQLite
+  const stmt = db.prepare(`
+    INSERT INTO dreams (userId, title, createdAt, updatedAt)
+    VALUES (?, ?, datetime('now'), datetime('now'))
+  `);
+  const result = stmt.run(userId, 'New Dream Recording');
+  const dreamId = result.lastInsertRowid;
 
   res.json({
     success: true,
-    dreamId: dreamId,
+    dreamId: String(dreamId),
     file: {
       filename: req.file.filename,
       size: req.file.size,
@@ -468,8 +804,7 @@ app.get('/api/dreams/:id', requireAuthentication, (req, res) => {
     });
   }
 
-  // If dream exists but belongs to another user, return 403
-  // (We return 404 to not reveal that the dream exists - security best practice)
+  // If dream exists but belongs to another user, return 404 (security best practice)
   if (!ownership.owned) {
     return res.status(404).json({
       error: 'Not Found',
@@ -479,7 +814,7 @@ app.get('/api/dreams/:id', requireAuthentication, (req, res) => {
 
   // Return the dream data
   res.json({
-    dream: { id: dreamId, ...ownership.dream.data },
+    dream: serializeDream(ownership.dream),
     message: 'Dream retrieved successfully'
   });
 });
@@ -507,17 +842,33 @@ app.patch('/api/dreams/:id', requireAuthentication, (req, res) => {
     });
   }
 
-  // Update the dream
+  // Update the dream in SQLite
   const updates = req.body;
-  const currentDream = dreamStore.get(dreamId);
-  dreamStore.set(dreamId, {
-    ...currentDream,
-    data: { ...currentDream.data, ...updates, updatedAt: new Date().toISOString() }
-  });
+  const allowedFields = ['title', 'isArchived', 'isPrivate'];
+  const setClauses = [];
+  const values = [];
+
+  for (const field of allowedFields) {
+    if (updates[field] !== undefined) {
+      setClauses.push(`${field} = ?`);
+      // Convert booleans to integers for SQLite
+      values.push(typeof updates[field] === 'boolean' ? (updates[field] ? 1 : 0) : updates[field]);
+    }
+  }
+
+  if (setClauses.length > 0) {
+    setClauses.push("updatedAt = datetime('now')");
+    values.push(dreamId);
+    const sql = `UPDATE dreams SET ${setClauses.join(', ')} WHERE id = ?`;
+    db.prepare(sql).run(...values);
+  }
+
+  // Fetch updated dream
+  const updatedDream = db.prepare('SELECT * FROM dreams WHERE id = ?').get(dreamId);
 
   res.json({
     success: true,
-    dream: { id: dreamId, ...dreamStore.get(dreamId).data },
+    dream: serializeDream(updatedDream),
     message: 'Dream updated successfully'
   });
 });
@@ -545,8 +896,8 @@ app.delete('/api/dreams/:id', requireAuthentication, (req, res) => {
     });
   }
 
-  // Delete the dream
-  dreamStore.delete(dreamId);
+  // Delete the dream from SQLite
+  db.prepare('DELETE FROM dreams WHERE id = ?').run(dreamId);
 
   res.json({
     success: true,
@@ -948,8 +1299,7 @@ Remember:
 
     console.log('Dream processing complete!');
 
-    // Step 5: Save dream to store (for persistence within session)
-    const dreamId = String(nextDreamId++);
+    // Step 5: Save dream to SQLite database (for persistence)
     const dreamData = {
       title: analysis.overview?.title || 'Untitled Dream',
       transcript,
@@ -958,21 +1308,45 @@ Remember:
       emotionalTone: analysis.overview?.emotionalTone || '',
       dreamType: analysis.overview?.dreamType || 'Unknown',
       dreamTypeConfidence: analysis.overview?.dreamTypeConfidence || 0,
-      analysis,
-      prosody: prosodyAnalysis,
-      dreamImage,
-      createdAt: new Date().toISOString(),
-      isArchived: false,
-      isPrivate: false
+      analysis: JSON.stringify(analysis),
+      prosody: prosodyAnalysis ? JSON.stringify(prosodyAnalysis) : null,
+      dreamImage: dreamImage ? JSON.stringify(dreamImage) : null,
+      isArchived: 0,
+      isPrivate: 0
     };
 
-    // Store dream with user ownership
-    dreamStore.set(dreamId, {
-      userId: userId,
-      data: dreamData
-    });
+    // Insert into SQLite
+    const stmt = db.prepare(`
+      INSERT INTO dreams (
+        userId, title, transcript, wordCount, recordingDuration,
+        emotionalTone, dreamType, dreamTypeConfidence,
+        analysis, prosody, dreamImage, isArchived, isPrivate,
+        createdAt, updatedAt
+      ) VALUES (
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        datetime('now'), datetime('now')
+      )
+    `);
+    const result = stmt.run(
+      userId,
+      dreamData.title,
+      dreamData.transcript,
+      dreamData.wordCount,
+      dreamData.recordingDuration,
+      dreamData.emotionalTone,
+      dreamData.dreamType,
+      dreamData.dreamTypeConfidence,
+      dreamData.analysis,
+      dreamData.prosody,
+      dreamData.dreamImage,
+      dreamData.isArchived,
+      dreamData.isPrivate
+    );
+    const dreamId = String(result.lastInsertRowid);
 
-    console.log(`Dream saved with ID: ${dreamId} for user: ${userId}`);
+    console.log(`Dream saved to SQLite with ID: ${dreamId} for user: ${userId}`);
 
     res.json({
       success: true,
