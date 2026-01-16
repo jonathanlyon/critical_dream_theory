@@ -762,14 +762,19 @@ Remember:
 });
 
 // Combined transcribe and analyze endpoint
+// Note: This endpoint optionally accepts auth but works without it for demo purposes
 app.post('/api/process-dream', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
+    // Get user ID if authenticated (optional - allows demo usage without auth)
+    const auth = getAuth(req);
+    const userId = auth?.userId || 'anonymous';
+
     const duration = req.body.duration || 0;
-    console.log('Processing dream recording:', req.file.path, 'Duration:', duration, 'seconds');
+    console.log('Processing dream recording:', req.file.path, 'Duration:', duration, 'seconds', 'User:', userId);
 
     // Step 1: Transcribe with Groq Whisper
     console.log('Step 1: Transcribing audio...');
@@ -943,8 +948,35 @@ Remember:
 
     console.log('Dream processing complete!');
 
+    // Step 5: Save dream to store (for persistence within session)
+    const dreamId = String(nextDreamId++);
+    const dreamData = {
+      title: analysis.overview?.title || 'Untitled Dream',
+      transcript,
+      wordCount: transcript.split(/\s+/).filter(w => w).length,
+      recordingDuration: parseInt(duration),
+      emotionalTone: analysis.overview?.emotionalTone || '',
+      dreamType: analysis.overview?.dreamType || 'Unknown',
+      dreamTypeConfidence: analysis.overview?.dreamTypeConfidence || 0,
+      analysis,
+      prosody: prosodyAnalysis,
+      dreamImage,
+      createdAt: new Date().toISOString(),
+      isArchived: false,
+      isPrivate: false
+    };
+
+    // Store dream with user ownership
+    dreamStore.set(dreamId, {
+      userId: userId,
+      data: dreamData
+    });
+
+    console.log(`Dream saved with ID: ${dreamId} for user: ${userId}`);
+
     res.json({
       success: true,
+      dreamId,
       transcript,
       wordCount: transcript.split(/\s+/).filter(w => w).length,
       recordingDuration: parseInt(duration),
