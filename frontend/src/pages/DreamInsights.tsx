@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@clerk/clerk-react'
+import { getDreams } from '../lib/api'
 
 // Dev mode toggle for testing different states
 const DEV_MODE = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -70,14 +72,68 @@ const longitudinalData = {
 }
 
 export default function DreamInsights() {
-  // Dev mode: allow switching between different dream counts for testing
-  const [devDreamCount, setDevDreamCount] = useState(0)
+  const { getToken } = useAuth()
+  const [dreamCount, setDreamCount] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // This would normally check user's dream count from the database
-  // In production, this would come from the actual dream journal data
-  const dreamCount = devDreamCount
+  // Dev mode: allow switching between different dream counts for testing
+  const [devDreamCount, setDevDreamCount] = useState<number | null>(null)
+
+  // Fetch actual dream count from the API
+  useEffect(() => {
+    async function fetchDreamCount() {
+      try {
+        setLoading(true)
+        const token = await getToken()
+        const result = await getDreams(token || undefined)
+        // Filter out archived dreams
+        const activeDreams = result.dreams.filter(d => !d.isArchived)
+        setDreamCount(activeDreams.length)
+      } catch (err) {
+        console.error('Failed to fetch dreams:', err)
+        setError('Failed to load dream data')
+        setDreamCount(0)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDreamCount()
+  }, [getToken])
+
   const requiredDreams = 3
-  const hasEnoughDreams = dreamCount >= requiredDreams
+  // Use dev override if in dev mode and override is set, otherwise use real count
+  const effectiveDreamCount = DEV_MODE && devDreamCount !== null ? devDreamCount : (dreamCount ?? 0)
+  const hasEnoughDreams = effectiveDreamCount >= requiredDreams
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading your dream insights...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!hasEnoughDreams) {
     return (
@@ -88,9 +144,9 @@ export default function DreamInsights() {
             <div className="fixed top-20 right-4 bg-dream-card border border-dream-border rounded-lg p-3 text-sm z-50">
               <p className="text-gray-400 mb-2">Dev: Dream Count</p>
               <div className="flex gap-1">
-                {[0, 1, 2, 3, 5].map(count => (
+                {[null, 0, 1, 2, 3, 5].map((count, idx) => (
                   <button
-                    key={count}
+                    key={idx}
                     onClick={() => setDevDreamCount(count)}
                     className={`px-2 py-1 rounded ${
                       devDreamCount === count
@@ -98,7 +154,7 @@ export default function DreamInsights() {
                         : 'bg-dream-darker text-gray-400 hover:bg-dream-border'
                     }`}
                   >
-                    {count}
+                    {count === null ? `Real(${dreamCount})` : count}
                   </button>
                 ))}
               </div>
@@ -125,13 +181,13 @@ export default function DreamInsights() {
                 stroke="currentColor"
                 strokeWidth="8"
                 strokeLinecap="round"
-                strokeDasharray={`${(dreamCount / requiredDreams) * 283} 283`}
+                strokeDasharray={`${(effectiveDreamCount / requiredDreams) * 283} 283`}
                 className="text-primary-500"
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-2xl font-bold text-primary-400">
-                {dreamCount}/{requiredDreams}
+                {effectiveDreamCount}/{requiredDreams}
               </span>
             </div>
           </div>
@@ -140,7 +196,7 @@ export default function DreamInsights() {
             Unlock Pattern Insights
           </h2>
           <p className="text-gray-400 mb-6 font-serif">
-            Record {requiredDreams - dreamCount} more {requiredDreams - dreamCount === 1 ? 'dream' : 'dreams'} to unlock
+            Record {requiredDreams - effectiveDreamCount} more {requiredDreams - effectiveDreamCount === 1 ? 'dream' : 'dreams'} to unlock
             personalized pattern insights. Longitudinal analysis requires at least {requiredDreams} dreams
             to identify meaningful recurring themes.
           </p>
@@ -155,7 +211,7 @@ export default function DreamInsights() {
   // Insights View (when user has 3+ dreams)
   // In production, this would fetch actual insights from the backend
   const insights = sampleInsights
-  const hasAdvancedTracking = dreamCount >= 5
+  const hasAdvancedTracking = effectiveDreamCount >= 5
 
   return (
     <div className="flex-1 p-6">
@@ -291,7 +347,7 @@ export default function DreamInsights() {
                   <h2 className="!mb-0">Cross-Dream Analysis</h2>
                 </div>
                 <p className="mb-4">
-                  With {dreamCount} dreams recorded, patterns across your entire dream journal
+                  With {effectiveDreamCount} dreams recorded, patterns across your entire dream journal
                   are becoming clearer. Here's what the data reveals:
                 </p>
 
@@ -313,10 +369,10 @@ export default function DreamInsights() {
                         <div className="flex-1 bg-dream-border rounded-full h-2">
                           <div
                             className="bg-primary-500 h-2 rounded-full transition-all"
-                            style={{ width: `${(item.frequency / dreamCount) * 100}%` }}
+                            style={{ width: `${(item.frequency / effectiveDreamCount) * 100}%` }}
                           />
                         </div>
-                        <span className="text-sm text-gray-400">{item.frequency}/{dreamCount} dreams</span>
+                        <span className="text-sm text-gray-400">{item.frequency}/{effectiveDreamCount} dreams</span>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">First appeared: {item.firstAppearance}</p>
                     </div>
@@ -414,13 +470,13 @@ export default function DreamInsights() {
           )}
 
           {/* Teaser for advanced tracking (3-4 dreams) */}
-          {!hasAdvancedTracking && dreamCount >= 3 && (
+          {!hasAdvancedTracking && effectiveDreamCount >= 3 && (
             <section className="card bg-gradient-to-br from-dream-card to-dream-darker border-dashed border-2 border-dream-border">
               <div className="text-center py-4">
                 <span className="text-4xl mb-4 block">🔮</span>
                 <h3 className="text-xl font-bold text-white mb-2">Advanced Tracking Coming Soon</h3>
                 <p className="text-gray-400 mb-4">
-                  Record {5 - dreamCount} more {5 - dreamCount === 1 ? 'dream' : 'dreams'} to unlock:
+                  Record {5 - effectiveDreamCount} more {5 - effectiveDreamCount === 1 ? 'dream' : 'dreams'} to unlock:
                 </p>
                 <ul className="text-sm text-gray-500 space-y-2">
                   <li>• Cross-dream element frequency analysis</li>
