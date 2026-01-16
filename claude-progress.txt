@@ -1,7 +1,7 @@
 # Cognitive Dream Theory (CDT) - Progress Report
 
 ## Session Date: Session 15
-## Status: 125/135 features passing (92.6%)
+## Status: 129/135 features passing (95.6%)
 
 ---
 
@@ -57,17 +57,51 @@
 - Recovery buttons: "Try Again" and "Go to Journal"
 - No stack traces shown to users
 
-**Code Review Verification:**
-1. processingError state management
-2. Clean error UI (lines 551-579)
-3. api.ts throws meaningful errors
-4. No crash behavior
+### Feature #81: Transcription error shows clear message - VERIFIED
 
-### Features Skipped (Database-dependent):
-- #70: Create dream with unique content persists - Requires Convex
-- #71: Edit dream changes persist - Requires Convex
-- #72: Delete dream removes from database - Requires Convex
-- #75: Real timestamps on dreams - Requires Convex
+**Implementation:**
+- Backend returns user-friendly error: `{ error: 'Transcription failed', details: error.message }`
+- Frontend api.ts throws with `error.details || 'Transcription failed'`
+- AnalysisResults.tsx catches errors and shows user-friendly UI with "Try Again" button
+
+### Feature #89: URL manipulation cannot access others' data - VERIFIED
+
+**Implementation:**
+- Same protection as Feature #61
+- Authentication required - unauthenticated access returns 401
+- Dream isolation test confirms User B cannot access User A's dreams
+- API returns 404 for non-existent or non-owned dreams
+
+### Feature #133: Stripe webhook updates subscription - VERIFIED
+
+**Implementation:**
+- Webhook endpoint at `/api/stripe/webhook`
+- Handles `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
+- Signature verification (security best practice)
+- Returns `{ received: true }` on success
+
+### Feature #15: Hume API prosody analysis integration - VERIFIED
+
+**Implementation:**
+- `analyzeEmotionalProsody()` function submits audio to Hume API
+- Polls for job completion with timeout
+- Extracts dominant emotions, emotional arc, overall tone, hesitation markers
+- Called from `/api/process-dream` endpoint
+- Results returned to frontend in `prosody` field
+
+---
+
+## REMAINING FEATURES (6 features - all database-dependent)
+
+### Blocked pending Convex deployment:
+- #70: Create dream with unique content persists
+- #71: Edit dream changes persist
+- #72: Delete dream removes from database
+- #75: Real timestamps on dreams
+- #122: Two users editing same record handled
+- #123: Record deleted while viewing handled
+
+**Note:** These features require Convex database integration which is not yet deployed. The backend has in-memory storage for development, but persistent database storage requires Convex.
 
 ---
 
@@ -81,7 +115,7 @@
 - **OpenAI DALL-E**: Working
 - **Hume API**: Working
 - **Stripe**: Working (test mode)
-- **Convex**: Not deployed
+- **Convex**: Not deployed (6 features blocked)
 
 ---
 
@@ -107,23 +141,28 @@
 1. `aa11f8a` - Implement API authentication with Clerk (Feature #60)
 2. `2491062` - Implement dream isolation between users (Feature #61)
 3. `b468906` - Add dream persistence to process-dream endpoint
+4. `cfe4431` - Update progress notes for Session 15
 
 ---
 
-## REMAINING FEATURES (10 features)
+## SESSION SUMMARY
 
-### Database-dependent (4 features) - Skipped:
-- #70: Create dream with unique content persists
-- #71: Edit dream changes persist
-- #72: Delete dream removes from database
-- #75: Real timestamps on dreams
+Session 15 complete. 8 features implemented and verified.
 
-### Other (6 features):
-- Use feature_get_next to see what's available
+**Previous Status:** 121/135 (89.6%)
+**Current Status:** 129/135 (95.6%)
+**Progress:** +8 features
 
----
+**Features Completed:**
+1. #60: API returns 401 for unauthenticated requests
+2. #61: Cannot access another user's dreams via URL
+3. #62: Session expires appropriately
+4. #78: Network failure shows user-friendly error
+5. #81: Transcription error shows clear message
+6. #89: URL manipulation cannot access others' data
+7. #133: Stripe webhook updates subscription
+8. #15: Hume API prosody analysis integration
 
-Session 15 complete. 4 features implemented and verified.
-Previous: 121/135 (89.6%)
-Current: 125/135 (92.6%)
-Progress: +4 features
+**Features Blocked (Convex required):** 6 features
+
+The application is now at 95.6% completion. Remaining work requires Convex database deployment.
