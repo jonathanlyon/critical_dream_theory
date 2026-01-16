@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { MOCK_DREAMS } from '../lib/dreamData'
 import { exportDreamsToPDF } from '../lib/pdfExport'
+import { createCheckoutSession, createPortalSession, getCheckoutSession, SubscriptionTier } from '../lib/api'
 
 // Dev mode toggle
 const DEV_MODE = !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -15,6 +17,8 @@ interface UserAccount {
   minutesUsed: number
   minutesLimit: number
   lastResetMonth?: string // Format: "YYYY-MM"
+  stripeCustomerId?: string // Stripe customer ID
+  stripeSubscriptionId?: string // Stripe subscription ID
 }
 
 const defaultAccount: UserAccount = {
@@ -87,6 +91,7 @@ function isValidEmail(email: string): boolean {
 }
 
 export default function Account() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [account, setAccount] = useState<UserAccount>(defaultAccount)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
@@ -98,6 +103,13 @@ export default function Account() {
   const [isExporting, setIsExporting] = useState(false)
   const [exportSuccess, setExportSuccess] = useState(false)
 
+  // Stripe states
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [selectedTier, setSelectedTier] = useState<SubscriptionTier | null>(null)
+  const [isProcessingStripe, setIsProcessingStripe] = useState(false)
+  const [stripeError, setStripeError] = useState<string | null>(null)
+  const [subscriptionSuccess, setSubscriptionSuccess] = useState(false)
+
   // Load account on mount
   useEffect(() => {
     const loaded = loadAccount()
@@ -105,6 +117,103 @@ export default function Account() {
     setEditName(loaded.name)
     setEditEmail(loaded.email)
   }, [])
+
+  // Handle Stripe redirect (success or cancel)
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id')
+    const success = searchParams.get('success')
+    const canceled = searchParams.get('canceled')
+
+    if (success === 'true' && sessionId) {
+      // Verify the checkout session and update the account
+      handleCheckoutSuccess(sessionId)
+      // Clear URL params
+      setSearchParams({})
+    } else if (canceled === 'true') {
+      setStripeError('Checkout was canceled. You can try again anytime.')
+      setSearchParams({})
+    }
+  }, [searchParams, setSearchParams])
+
+  // Handle successful checkout
+  const handleCheckoutSuccess = async (sessionId: string) => {
+    try {
+      setIsProcessingStripe(true)
+      const session = await getCheckoutSession(sessionId)
+
+      if (session.paymentStatus === 'paid' && session.tier) {
+        // Update local account with new tier
+        const tierLimits: Record<string, number> = {
+          tier1: 10,
+          tier2: 20,
+          tier3: 30
+        }
+
+        const updatedAccount: UserAccount = {
+          ...account,
+          tier: session.tier,
+          minutesLimit: tierLimits[session.tier] || 10,
+          minutesUsed: 0, // Reset usage on upgrade
+          stripeCustomerId: session.customerId,
+          stripeSubscriptionId: session.subscriptionId,
+          lastResetMonth: getCurrentMonth()
+        }
+
+        saveAccount(updatedAccount)
+        setAccount(updatedAccount)
+        setSubscriptionSuccess(true)
+
+        setTimeout(() => setSubscriptionSuccess(false), 5000)
+      }
+    } catch (error) {
+      console.error('Error verifying checkout:', error)
+      setStripeError('Failed to verify subscription. Please contact support.')
+    } finally {
+      setIsProcessingStripe(false)
+    }
+  }
+
+  // Handle upgrade button click
+  const handleUpgrade = async (tier: SubscriptionTier) => {
+    setStripeError(null)
+    setIsProcessingStripe(true)
+
+    try {
+      const result = await createCheckoutSession(tier, account.stripeCustomerId)
+
+      if (result.url) {
+        // Redirect to Stripe Checkout
+        window.location.href = result.url
+      }
+    } catch (error) {
+      console.error('Checkout error:', error)
+      setStripeError(error instanceof Error ? error.message : 'Failed to start checkout')
+      setIsProcessingStripe(false)
+    }
+  }
+
+  // Handle manage subscription button
+  const handleManageSubscription = async () => {
+    if (!account.stripeCustomerId) {
+      setStripeError('No active subscription found')
+      return
+    }
+
+    setStripeError(null)
+    setIsProcessingStripe(true)
+
+    try {
+      const result = await createPortalSession(account.stripeCustomerId)
+
+      if (result.url) {
+        window.location.href = result.url
+      }
+    } catch (error) {
+      console.error('Portal error:', error)
+      setStripeError(error instanceof Error ? error.message : 'Failed to open subscription portal')
+      setIsProcessingStripe(false)
+    }
+  }
 
   const handleSave = () => {
     // Validate email before saving (in dev mode where email is editable)
@@ -326,20 +435,192 @@ export default function Account() {
             <h2 className="text-xl font-semibold text-white mb-6">
               Subscription
             </h2>
+
+            {/* Success message */}
+            {subscriptionSuccess && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-sm text-green-400 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Subscription upgraded successfully! Your new tier is now active.
+              </div>
+            )}
+
+            {/* Error message */}
+            {stripeError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
+                {stripeError}
+                <button
+                  className="ml-2 text-red-300 hover:text-red-200 underline"
+                  onClick={() => setStripeError(null)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-6">
               <div>
                 <p className="font-medium text-gray-200">Current Tier</p>
                 <p className="text-2xl font-bold text-primary-400">{currentTier.name}</p>
                 <p className="text-sm text-gray-500">{currentTier.description}</p>
               </div>
-              <button className="btn-primary touch-target">
-                Upgrade
-              </button>
+              {account.tier === 'free' ? (
+                <button
+                  className="btn-primary touch-target"
+                  onClick={() => setShowUpgradeModal(true)}
+                  disabled={isProcessingStripe}
+                >
+                  {isProcessingStripe ? 'Processing...' : 'Upgrade'}
+                </button>
+              ) : (
+                <span className="text-sm text-green-400 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Active
+                </span>
+              )}
             </div>
-            <button className="btn-ghost w-full touch-target">
-              Manage Subscription
+            <button
+              className="btn-ghost w-full touch-target"
+              onClick={handleManageSubscription}
+              disabled={isProcessingStripe || !account.stripeCustomerId}
+            >
+              {isProcessingStripe ? 'Opening portal...' : 'Manage Subscription'}
             </button>
+            {!account.stripeCustomerId && account.tier !== 'free' && (
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                Subscription portal available after first payment
+              </p>
+            )}
           </section>
+
+          {/* Upgrade Modal */}
+          {showUpgradeModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-dream-card border border-dream-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-white">Choose Your Plan</h3>
+                    <button
+                      className="text-gray-400 hover:text-white"
+                      onClick={() => setShowUpgradeModal(false)}
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Tier 1 - Noticing */}
+                    <div className="p-4 bg-dream-darker rounded-lg border border-dream-border hover:border-primary-500/50 transition-colors">
+                      <h4 className="text-lg font-semibold text-white mb-2">Noticing</h4>
+                      <p className="text-3xl font-bold text-primary-400 mb-1">$9.99<span className="text-sm text-gray-400">/mo</span></p>
+                      <p className="text-sm text-gray-400 mb-4">10 minutes per month</p>
+                      <ul className="text-sm text-gray-300 space-y-2 mb-4">
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Brief reflections
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Emotional tagging
+                        </li>
+                      </ul>
+                      <button
+                        className="btn-primary w-full"
+                        onClick={() => handleUpgrade('tier1')}
+                        disabled={isProcessingStripe}
+                      >
+                        {isProcessingStripe ? 'Processing...' : 'Select Plan'}
+                      </button>
+                    </div>
+
+                    {/* Tier 2 - Patterning */}
+                    <div className="p-4 bg-dream-darker rounded-lg border-2 border-primary-500 relative">
+                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-primary-500 text-white text-xs px-3 py-1 rounded-full">
+                        Popular
+                      </div>
+                      <h4 className="text-lg font-semibold text-white mb-2">Patterning</h4>
+                      <p className="text-3xl font-bold text-primary-400 mb-1">$19.99<span className="text-sm text-gray-400">/mo</span></p>
+                      <p className="text-sm text-gray-400 mb-4">20 minutes per month</p>
+                      <ul className="text-sm text-gray-300 space-y-2 mb-4">
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Recurring themes
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Continuity tracking
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Pattern insights
+                        </li>
+                      </ul>
+                      <button
+                        className="btn-primary w-full"
+                        onClick={() => handleUpgrade('tier2')}
+                        disabled={isProcessingStripe}
+                      >
+                        {isProcessingStripe ? 'Processing...' : 'Select Plan'}
+                      </button>
+                    </div>
+
+                    {/* Tier 3 - Integration */}
+                    <div className="p-4 bg-dream-darker rounded-lg border border-dream-border hover:border-primary-500/50 transition-colors">
+                      <h4 className="text-lg font-semibold text-white mb-2">Integration</h4>
+                      <p className="text-3xl font-bold text-primary-400 mb-1">$29.99<span className="text-sm text-gray-400">/mo</span></p>
+                      <p className="text-sm text-gray-400 mb-4">30 minutes per month</p>
+                      <ul className="text-sm text-gray-300 space-y-2 mb-4">
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Deep narratives
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Emotional synthesis
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Priority support
+                        </li>
+                      </ul>
+                      <button
+                        className="btn-primary w-full"
+                        onClick={() => handleUpgrade('tier3')}
+                        disabled={isProcessingStripe}
+                      >
+                        {isProcessingStripe ? 'Processing...' : 'Select Plan'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500 text-center mt-4">
+                    All plans are billed monthly. Cancel anytime. Prices in USD.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Usage */}
           <section className="card">

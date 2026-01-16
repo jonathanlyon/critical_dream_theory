@@ -182,3 +182,89 @@ export async function analyzeDream(
   const result = await response.json();
   return result.analysis;
 }
+
+// ============================================
+// STRIPE SUBSCRIPTION API
+// ============================================
+
+export type SubscriptionTier = 'tier1' | 'tier2' | 'tier3';
+
+export interface CheckoutSessionResult {
+  sessionId: string;
+  url: string;
+}
+
+export interface CheckoutSessionDetails {
+  status: string;
+  paymentStatus: string;
+  customerId: string;
+  subscriptionId: string;
+  tier: SubscriptionTier;
+}
+
+export interface PortalSessionResult {
+  url: string;
+}
+
+// Create a Stripe checkout session for subscription
+export async function createCheckoutSession(
+  tier: SubscriptionTier,
+  customerId?: string
+): Promise<CheckoutSessionResult> {
+  const response = await fetch(`${API_BASE_URL}/stripe/create-checkout-session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tier,
+      customerId,
+      successUrl: `${window.location.origin}/account?session_id={CHECKOUT_SESSION_ID}&success=true`,
+      cancelUrl: `${window.location.origin}/account?canceled=true`
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Failed to create checkout session');
+  }
+
+  return response.json();
+}
+
+// Create a Stripe customer portal session
+export async function createPortalSession(
+  customerId: string
+): Promise<PortalSessionResult> {
+  const response = await fetch(`${API_BASE_URL}/stripe/create-portal-session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      customerId,
+      returnUrl: `${window.location.origin}/account`
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Failed to create portal session');
+  }
+
+  return response.json();
+}
+
+// Get checkout session details
+export async function getCheckoutSession(
+  sessionId: string
+): Promise<CheckoutSessionDetails> {
+  const response = await fetch(`${API_BASE_URL}/stripe/checkout-session/${sessionId}`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Failed to get session details');
+  }
+
+  return response.json();
+}

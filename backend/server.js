@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import Groq from 'groq-sdk';
 import OpenAI from 'openai';
+import Stripe from 'stripe';
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -720,6 +721,221 @@ Remember:
   }
 });
 
+// ============================================
+// STRIPE SUBSCRIPTION ENDPOINTS
+// ============================================
+
+// Initialize Stripe
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+// Price IDs for subscription tiers (these should be created in Stripe Dashboard)
+// For testing, we'll create them dynamically if they don't exist
+const STRIPE_PRICES = {
+  tier1: process.env.STRIPE_PRICE_TIER1 || 'price_tier1_noticing',
+  tier2: process.env.STRIPE_PRICE_TIER2 || 'price_tier2_patterning',
+  tier3: process.env.STRIPE_PRICE_TIER3 || 'price_tier3_integration'
+};
+
+const TIER_DETAILS = {
+  tier1: { name: 'Noticing', price: 999, description: '10 minutes per month' },
+  tier2: { name: 'Patterning', price: 1999, description: '20 minutes per month' },
+  tier3: { name: 'Integration', price: 2999, description: '30 minutes per month' }
+};
+
+// Create a Stripe Checkout Session for subscription
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe is not configured' });
+  }
+
+  try {
+    const { tier, customerId, successUrl, cancelUrl } = req.body;
+
+    if (!tier || !TIER_DETAILS[tier]) {
+      return res.status(400).json({ error: 'Invalid subscription tier' });
+    }
+
+    const tierDetail = TIER_DETAILS[tier];
+
+    // For test mode, we'll create a price on the fly
+    // In production, you should use pre-created price IDs from Stripe Dashboard
+    let priceId = STRIPE_PRICES[tier];
+
+    // Try to use the price, or create a new one if it doesn't exist
+    try {
+      await stripe.prices.retrieve(priceId);
+    } catch (e) {
+      // Price doesn't exist, create a product and price
+      console.log(`Creating Stripe product and price for ${tier}...`);
+
+      const product = await stripe.products.create({
+        name: `CDT ${tierDetail.name}`,
+        description: tierDetail.description
+      });
+
+      const price = await stripe.prices.create({
+        product: product.id,
+        unit_amount: tierDetail.price,
+        currency: 'usd',
+        recurring: { interval: 'month' }
+      });
+
+      priceId = price.id;
+      console.log(`Created price: ${priceId}`);
+    }
+
+    const sessionConfig = {
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1
+        }
+      ],
+      success_url: successUrl || `${req.headers.origin}/account?session_id={CHECKOUT_SESSION_ID}&success=true`,
+      cancel_url: cancelUrl || `${req.headers.origin}/account?canceled=true`,
+      metadata: {
+        tier: tier
+      }
+    };
+
+    // If we have a customer ID, attach it to the session
+    if (customerId) {
+      sessionConfig.customer = customerId;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    console.log(`Stripe checkout session created: ${session.id}`);
+
+    res.json({
+      sessionId: session.id,
+      url: session.url
+    });
+
+  } catch (error) {
+    console.error('Stripe checkout error:', error);
+    res.status(500).json({
+      error: 'Failed to create checkout session',
+      details: error.message
+    });
+  }
+});
+
+// Create a Stripe Customer Portal session
+app.post('/api/stripe/create-portal-session', async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe is not configured' });
+  }
+
+  try {
+    const { customerId, returnUrl } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({ error: 'Customer ID is required' });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl || `${req.headers.origin}/account`
+    });
+
+    console.log(`Stripe portal session created for customer: ${customerId}`);
+
+    res.json({
+      url: session.url
+    });
+
+  } catch (error) {
+    console.error('Stripe portal error:', error);
+    res.status(500).json({
+      error: 'Failed to create portal session',
+      details: error.message
+    });
+  }
+});
+
+// Get checkout session details (for verifying successful payment)
+app.get('/api/stripe/checkout-session/:sessionId', async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe is not configured' });
+  }
+
+  try {
+    const { sessionId } = req.params;
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['subscription', 'customer']
+    });
+
+    res.json({
+      status: session.status,
+      paymentStatus: session.payment_status,
+      customerId: session.customer?.id || session.customer,
+      subscriptionId: session.subscription?.id || session.subscription,
+      tier: session.metadata?.tier
+    });
+
+  } catch (error) {
+    console.error('Stripe session retrieval error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve session',
+      details: error.message
+    });
+  }
+});
+
+// Stripe webhook endpoint for handling subscription events
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe is not configured' });
+  }
+
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+
+  try {
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } else {
+      // For testing without webhook signature verification
+      event = JSON.parse(req.body.toString());
+    }
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  console.log(`Stripe webhook received: ${event.type}`);
+
+  // Handle the event
+  switch (event.type) {
+    case 'checkout.session.completed':
+      const session = event.data.object;
+      console.log(`Checkout completed for customer: ${session.customer}, tier: ${session.metadata?.tier}`);
+      // Here you would update the user's subscription in your database
+      break;
+
+    case 'customer.subscription.updated':
+      const subscription = event.data.object;
+      console.log(`Subscription updated: ${subscription.id}, status: ${subscription.status}`);
+      break;
+
+    case 'customer.subscription.deleted':
+      const deletedSub = event.data.object;
+      console.log(`Subscription canceled: ${deletedSub.id}`);
+      break;
+
+    default:
+      console.log(`Unhandled event type: ${event.type}`);
+  }
+
+  res.json({ received: true });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`CDT Backend server running on http://localhost:${PORT}`);
@@ -728,4 +944,8 @@ app.listen(PORT, () => {
   console.log('  POST /api/transcribe   - Transcribe audio to text');
   console.log('  POST /api/analyze      - Analyze dream transcript');
   console.log('  POST /api/process-dream - Combined transcribe + analyze');
+  console.log('  POST /api/stripe/create-checkout-session - Create Stripe checkout');
+  console.log('  POST /api/stripe/create-portal-session - Create Stripe portal');
+  console.log('  GET  /api/stripe/checkout-session/:id - Get session details');
+  console.log('  POST /api/stripe/webhook - Stripe webhook');
 });
