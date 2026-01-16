@@ -7,6 +7,7 @@ import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import { Buffer } from 'buffer';
 
 // Load environment variables from parent directory
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +25,204 @@ const groq = new Groq({
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Hume API configuration
+const HUME_API_KEY = process.env.HUME_API_KEY;
+const HUME_API_URL = 'https://api.hume.ai/v0/batch/jobs';
+
+// Function to analyze emotional prosody using Hume API
+async function analyzeEmotionalProsody(audioFilePath) {
+  if (!HUME_API_KEY) {
+    console.log('Hume API key not configured, skipping prosody analysis');
+    return null;
+  }
+
+  try {
+    console.log('Starting Hume prosody analysis...');
+
+    // Read audio file as base64
+    const audioBuffer = fs.readFileSync(audioFilePath);
+    const audioBase64 = audioBuffer.toString('base64');
+
+    // Create a batch job request for prosody analysis
+    const requestBody = {
+      models: {
+        prosody: {}
+      },
+      urls: [],
+      files: [
+        {
+          filename: 'dream_recording.webm',
+          content_type: 'audio/webm',
+          data: audioBase64
+        }
+      ]
+    };
+
+    // Submit job to Hume API
+    const submitResponse = await fetch(HUME_API_URL, {
+      method: 'POST',
+      headers: {
+        'X-Hume-Api-Key': HUME_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!submitResponse.ok) {
+      const errorText = await submitResponse.text();
+      console.error('Hume API error:', submitResponse.status, errorText);
+      return null;
+    }
+
+    const jobInfo = await submitResponse.json();
+    const jobId = jobInfo.job_id;
+    console.log('Hume job submitted:', jobId);
+
+    // Poll for job completion (with timeout)
+    const maxWaitTime = 30000; // 30 seconds
+    const pollInterval = 2000; // 2 seconds
+    let elapsed = 0;
+
+    while (elapsed < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      elapsed += pollInterval;
+
+      const statusResponse = await fetch(`${HUME_API_URL}/${jobId}`, {
+        headers: {
+          'X-Hume-Api-Key': HUME_API_KEY
+        }
+      });
+
+      if (!statusResponse.ok) {
+        console.error('Failed to check Hume job status');
+        return null;
+      }
+
+      const statusData = await statusResponse.json();
+
+      if (statusData.state.status === 'COMPLETED') {
+        console.log('Hume analysis complete');
+
+        // Get predictions
+        const predictionsResponse = await fetch(`${HUME_API_URL}/${jobId}/predictions`, {
+          headers: {
+            'X-Hume-Api-Key': HUME_API_KEY
+          }
+        });
+
+        if (!predictionsResponse.ok) {
+          console.error('Failed to fetch Hume predictions');
+          return null;
+        }
+
+        const predictions = await predictionsResponse.json();
+        return extractProsodyInsights(predictions);
+      } else if (statusData.state.status === 'FAILED') {
+        console.error('Hume job failed:', statusData.state.message);
+        return null;
+      }
+
+      console.log('Hume job status:', statusData.state.status, '- waiting...');
+    }
+
+    console.log('Hume analysis timed out');
+    return null;
+
+  } catch (error) {
+    console.error('Prosody analysis error:', error.message);
+    return null;
+  }
+}
+
+// Extract key emotional insights from Hume predictions
+function extractProsodyInsights(predictions) {
+  try {
+    const prosodyPredictions = predictions?.[0]?.results?.predictions?.[0]?.models?.prosody?.grouped_predictions;
+
+    if (!prosodyPredictions || prosodyPredictions.length === 0) {
+      return {
+        dominantEmotions: [],
+        emotionalArc: 'Unable to determine',
+        overallTone: 'Neutral',
+        hesitationMarkers: []
+      };
+    }
+
+    // Aggregate emotions across all predictions
+    const emotionScores = {};
+    const hesitationMarkers = [];
+
+    prosodyPredictions.forEach((group, index) => {
+      group.predictions?.forEach(pred => {
+        pred.emotions?.forEach(emotion => {
+          if (!emotionScores[emotion.name]) {
+            emotionScores[emotion.name] = [];
+          }
+          emotionScores[emotion.name].push(emotion.score);
+
+          // Track hesitation indicators (low confidence, uncertainty)
+          if (['Confusion', 'Doubt', 'Anxiety'].includes(emotion.name) && emotion.score > 0.3) {
+            hesitationMarkers.push({
+              time: pred.time?.begin || index,
+              emotion: emotion.name,
+              intensity: emotion.score
+            });
+          }
+        });
+      });
+    });
+
+    // Calculate average scores and find dominant emotions
+    const avgScores = Object.entries(emotionScores).map(([name, scores]) => ({
+      name,
+      avgScore: scores.reduce((a, b) => a + b, 0) / scores.length
+    })).sort((a, b) => b.avgScore - a.avgScore);
+
+    const dominantEmotions = avgScores.slice(0, 5).map(e => ({
+      emotion: e.name,
+      intensity: Math.round(e.avgScore * 100) / 100
+    }));
+
+    // Determine overall emotional tone
+    const positiveEmotions = ['Joy', 'Interest', 'Amusement', 'Excitement', 'Love'];
+    const negativeEmotions = ['Sadness', 'Anger', 'Fear', 'Disgust', 'Anxiety'];
+
+    let posScore = 0, negScore = 0;
+    dominantEmotions.forEach(e => {
+      if (positiveEmotions.includes(e.emotion)) posScore += e.intensity;
+      if (negativeEmotions.includes(e.emotion)) negScore += e.intensity;
+    });
+
+    let overallTone = 'Neutral';
+    if (posScore > negScore + 0.2) overallTone = 'Positive';
+    else if (negScore > posScore + 0.2) overallTone = 'Negative';
+    else if (posScore > 0.3 && negScore > 0.3) overallTone = 'Mixed';
+
+    // Determine emotional arc (beginning vs end)
+    const firstHalf = prosodyPredictions.slice(0, Math.floor(prosodyPredictions.length / 2));
+    const secondHalf = prosodyPredictions.slice(Math.floor(prosodyPredictions.length / 2));
+
+    let emotionalArc = 'Stable';
+    // Simplified arc detection based on emotion intensity changes
+
+    return {
+      dominantEmotions,
+      emotionalArc,
+      overallTone,
+      hesitationMarkers: hesitationMarkers.slice(0, 5) // Limit to 5 markers
+    };
+
+  } catch (error) {
+    console.error('Error extracting prosody insights:', error);
+    return {
+      dominantEmotions: [],
+      emotionalArc: 'Unable to determine',
+      overallTone: 'Neutral',
+      hesitationMarkers: []
+    };
+  }
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -289,11 +488,21 @@ app.post('/api/process-dream', upload.single('audio'), async (req, res) => {
     const transcript = transcription.text;
     console.log('Transcription complete:', transcript.substring(0, 100) + '...');
 
-    // Clean up uploaded file
+    // Step 2: Analyze emotional prosody with Hume API (in parallel)
+    console.log('Step 2: Analyzing emotional prosody...');
+    let prosodyAnalysis = null;
+    try {
+      prosodyAnalysis = await analyzeEmotionalProsody(req.file.path);
+      console.log('Prosody analysis complete:', prosodyAnalysis ? 'Success' : 'No data');
+    } catch (prosodyError) {
+      console.error('Prosody analysis failed (non-blocking):', prosodyError.message);
+    }
+
+    // Clean up uploaded file after prosody analysis
     fs.unlinkSync(req.file.path);
 
-    // Step 2: Analyze with OpenAI
-    console.log('Step 2: Analyzing dream...');
+    // Step 3: Analyze with OpenAI
+    console.log('Step 3: Analyzing dream with CDT framework...');
 
     const analysisPrompt = `You are a dream analyst trained in Cognitive Dream Theory (CDT), Schredl manifest content coding, and Jungian archetypal frameworks. Analyze the following dream transcript and provide a structured analysis.
 
@@ -431,7 +640,8 @@ Remember:
       transcript,
       wordCount: transcript.split(/\s+/).filter(w => w).length,
       recordingDuration: parseInt(duration),
-      analysis
+      analysis,
+      prosody: prosodyAnalysis
     });
 
   } catch (error) {

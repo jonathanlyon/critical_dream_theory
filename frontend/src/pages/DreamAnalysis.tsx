@@ -357,7 +357,10 @@ export default function DreamAnalysis() {
             setShowCountdown(false)
             setIsRecording(true)
             setRecordingTime(0)
-            mediaRecorder.start(1000) // Collect data every second
+            // Only start if not already recording (prevent double-start in strict mode)
+            if (mediaRecorder.state === 'inactive') {
+              mediaRecorder.start(1000) // Collect data every second
+            }
             return 0
           }
           return prev - 1

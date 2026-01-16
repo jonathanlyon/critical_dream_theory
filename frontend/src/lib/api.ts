@@ -81,12 +81,20 @@ export interface DreamAnalysis {
   }>;
 }
 
+export interface ProsodyAnalysis {
+  dominantEmotions: Array<{ emotion: string; intensity: number }>;
+  emotionalArc: string;
+  overallTone: string;
+  hesitationMarkers: Array<{ time: number; emotion: string; intensity: number }>;
+}
+
 export interface ProcessDreamResult {
   success: boolean;
   transcript: string;
   wordCount: number;
   recordingDuration: number;
   analysis: DreamAnalysis;
+  prosody: ProsodyAnalysis | null;
 }
 
 // Health check

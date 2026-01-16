@@ -243,6 +243,12 @@ interface AnalysisData {
   };
   reflectivePrompts: Array<{ category: string; prompt: string; dreamConnection: string }>;
   dreamImage: { url: string | null; prompt: string; status: string };
+  prosody?: {
+    dominantEmotions: Array<{ emotion: string; intensity: number }>;
+    emotionalArc: string;
+    overallTone: string;
+    hesitationMarkers: Array<{ time: number; emotion: string; intensity: number }>;
+  } | null;
 }
 
 export default function AnalysisResults() {
@@ -335,7 +341,8 @@ export default function AnalysisResults() {
               url: null,
               prompt: 'AI-generated visualization pending',
               status: 'pending'
-            }
+            },
+            prosody: result.prosody || null
           }
 
           setAnalysis(analysisData)
@@ -677,6 +684,50 @@ export default function AnalysisResults() {
               <span className="text-gray-300 font-medium">Emotional Tone:</span> {analysis.overview.emotionalTone}
             </p>
           </div>
+
+          {/* Prosody Analysis (Hume API) */}
+          {analysis.prosody && analysis.prosody.dominantEmotions && analysis.prosody.dominantEmotions.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-dream-border">
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Voice Emotional Analysis</h3>
+              <div className="space-y-4">
+                {/* Dominant Emotions */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">Detected emotions from voice:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.prosody.dominantEmotions.slice(0, 5).map((e, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 rounded-full text-xs bg-primary-600/20 text-primary-400"
+                        style={{ opacity: 0.5 + (e.intensity * 0.5) }}
+                      >
+                        {e.emotion} ({Math.round(e.intensity * 100)}%)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Overall Tone */}
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-500">Overall Voice Tone:</span>
+                  <span className={`text-sm font-medium ${
+                    analysis.prosody.overallTone === 'Positive' ? 'text-green-400' :
+                    analysis.prosody.overallTone === 'Negative' ? 'text-red-400' :
+                    analysis.prosody.overallTone === 'Mixed' ? 'text-yellow-400' :
+                    'text-gray-400'
+                  }`}>
+                    {analysis.prosody.overallTone}
+                  </span>
+                </div>
+
+                {/* Hesitation Markers */}
+                {analysis.prosody.hesitationMarkers && analysis.prosody.hesitationMarkers.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500">Moments of hesitation detected: {analysis.prosody.hesitationMarkers.length}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Audio Player */}
           <div className="mt-6 pt-6 border-t border-dream-border">
