@@ -331,19 +331,88 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// In-memory dream store for demonstration (would be Convex in production)
+// Key: dreamId, Value: { userId, dreamData }
+const dreamStore = new Map();
+let nextDreamId = 1;
+
+// Helper function to check dream ownership
+const checkDreamOwnership = (dreamId, userId) => {
+  const dream = dreamStore.get(dreamId);
+  if (!dream) {
+    return { exists: false, owned: false };
+  }
+  return { exists: true, owned: dream.userId === userId, dream: dream };
+};
+
+// ============================================
+// TEST ENDPOINTS (Development only - for verifying security)
+// ============================================
+
+// Test endpoint to simulate dream isolation scenario
+// This endpoint is only for testing purposes and should be disabled in production
+app.post('/api/test/dream-isolation', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  // Simulate creating a dream owned by "user_A"
+  const userAId = 'test_user_A';
+  const userBId = 'test_user_B';
+
+  // Create a dream for User A
+  const dreamId = 'test_dream_' + Date.now();
+  dreamStore.set(dreamId, {
+    userId: userAId,
+    data: {
+      title: 'User A Secret Dream',
+      content: 'This dream belongs to User A and should not be visible to User B',
+      createdAt: new Date().toISOString()
+    }
+  });
+
+  // Test 1: User A can access their own dream
+  const userAAccess = checkDreamOwnership(dreamId, userAId);
+
+  // Test 2: User B cannot access User A's dream
+  const userBAccess = checkDreamOwnership(dreamId, userBId);
+
+  // Clean up test dream
+  dreamStore.delete(dreamId);
+
+  res.json({
+    testResults: {
+      dreamCreated: true,
+      dreamId: dreamId,
+      userACanAccess: userAAccess.exists && userAAccess.owned,
+      userBCanAccess: userBAccess.exists && userBAccess.owned,
+      isolationWorking: userAAccess.owned && !userBAccess.owned
+    },
+    message: userAAccess.owned && !userBAccess.owned
+      ? 'Dream isolation is working correctly - User B cannot access User A\'s dream'
+      : 'ERROR: Dream isolation is NOT working!'
+  });
+});
+
 // ============================================
 // PROTECTED DREAM ENDPOINTS (Require Authentication)
 // ============================================
 
 // GET /api/dreams - List user's dreams (requires authentication)
 app.get('/api/dreams', requireAuthentication, (req, res) => {
-  // In a full implementation, this would fetch from Convex database
-  // For now, return empty array with user context
   const userId = req.userId;
+
+  // Filter dreams to only return those owned by the current user
+  const userDreams = [];
+  dreamStore.forEach((dream, id) => {
+    if (dream.userId === userId) {
+      userDreams.push({ id, ...dream.data });
+    }
+  });
+
   res.json({
-    dreams: [],
-    total: 0,
-    userId: userId,
+    dreams: userDreams,
+    total: userDreams.length,
     message: 'Dream list retrieved successfully'
   });
 });
@@ -356,11 +425,25 @@ app.post('/api/dreams/upload', requireAuthentication, upload.single('audio'), (r
     return res.status(400).json({ error: 'No audio file provided' });
   }
 
-  // In a full implementation, this would store in cloud storage and Convex
-  // For now, return success with file info
+  // Create a new dream record
+  const dreamId = String(nextDreamId++);
+  const dreamData = {
+    title: 'New Dream Recording',
+    filename: req.file.filename,
+    size: req.file.size,
+    mimetype: req.file.mimetype,
+    createdAt: new Date().toISOString()
+  };
+
+  // Store dream with user ownership
+  dreamStore.set(dreamId, {
+    userId: userId,
+    data: dreamData
+  });
+
   res.json({
     success: true,
-    userId: userId,
+    dreamId: dreamId,
     file: {
       filename: req.file.filename,
       size: req.file.size,
@@ -375,12 +458,29 @@ app.get('/api/dreams/:id', requireAuthentication, (req, res) => {
   const userId = req.userId;
   const dreamId = req.params.id;
 
-  // In a full implementation, this would fetch from Convex database
+  const ownership = checkDreamOwnership(dreamId, userId);
+
+  // If dream doesn't exist, return 404
+  if (!ownership.exists) {
+    return res.status(404).json({
+      error: 'Not Found',
+      message: 'Dream not found'
+    });
+  }
+
+  // If dream exists but belongs to another user, return 403
+  // (We return 404 to not reveal that the dream exists - security best practice)
+  if (!ownership.owned) {
+    return res.status(404).json({
+      error: 'Not Found',
+      message: 'Dream not found'
+    });
+  }
+
+  // Return the dream data
   res.json({
-    dream: null,
-    userId: userId,
-    dreamId: dreamId,
-    message: 'Dream not found'
+    dream: { id: dreamId, ...ownership.dream.data },
+    message: 'Dream retrieved successfully'
   });
 });
 
@@ -389,11 +489,36 @@ app.patch('/api/dreams/:id', requireAuthentication, (req, res) => {
   const userId = req.userId;
   const dreamId = req.params.id;
 
+  const ownership = checkDreamOwnership(dreamId, userId);
+
+  // If dream doesn't exist, return 404
+  if (!ownership.exists) {
+    return res.status(404).json({
+      error: 'Not Found',
+      message: 'Dream not found'
+    });
+  }
+
+  // If dream exists but belongs to another user, return 403
+  if (!ownership.owned) {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'You do not have permission to modify this dream'
+    });
+  }
+
+  // Update the dream
+  const updates = req.body;
+  const currentDream = dreamStore.get(dreamId);
+  dreamStore.set(dreamId, {
+    ...currentDream,
+    data: { ...currentDream.data, ...updates, updatedAt: new Date().toISOString() }
+  });
+
   res.json({
     success: true,
-    userId: userId,
-    dreamId: dreamId,
-    message: 'Dream update endpoint ready'
+    dream: { id: dreamId, ...dreamStore.get(dreamId).data },
+    message: 'Dream updated successfully'
   });
 });
 
@@ -402,11 +527,30 @@ app.delete('/api/dreams/:id', requireAuthentication, (req, res) => {
   const userId = req.userId;
   const dreamId = req.params.id;
 
+  const ownership = checkDreamOwnership(dreamId, userId);
+
+  // If dream doesn't exist, return 404
+  if (!ownership.exists) {
+    return res.status(404).json({
+      error: 'Not Found',
+      message: 'Dream not found'
+    });
+  }
+
+  // If dream exists but belongs to another user, return 403
+  if (!ownership.owned) {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'You do not have permission to delete this dream'
+    });
+  }
+
+  // Delete the dream
+  dreamStore.delete(dreamId);
+
   res.json({
     success: true,
-    userId: userId,
-    dreamId: dreamId,
-    message: 'Dream delete endpoint ready'
+    message: 'Dream deleted successfully'
   });
 });
 
