@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import { Buffer } from 'buffer';
+import { clerkMiddleware, requireAuth, getAuth } from '@clerk/express';
 
 // Load environment variables from parent directory
 const __filename = fileURLToPath(import.meta.url);
@@ -297,14 +298,116 @@ const upload = multer({
 // Middleware
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   credentials: true
 }));
 app.use(express.json());
 
+// Clerk authentication middleware (makes auth available on all routes)
+// Map VITE_CLERK_PUBLISHABLE_KEY to the expected CLERK_PUBLISHABLE_KEY
+const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+
+app.use(clerkMiddleware({
+  publishableKey: clerkPublishableKey,
+  secretKey: clerkSecretKey
+}));
+
+// Custom authentication middleware that returns 401 for unauthenticated requests
+const requireAuthentication = (req, res, next) => {
+  const auth = getAuth(req);
+  if (!auth || !auth.userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Authentication required. Please sign in to access this resource.'
+    });
+  }
+  req.userId = auth.userId;
+  next();
+};
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ============================================
+// PROTECTED DREAM ENDPOINTS (Require Authentication)
+// ============================================
+
+// GET /api/dreams - List user's dreams (requires authentication)
+app.get('/api/dreams', requireAuthentication, (req, res) => {
+  // In a full implementation, this would fetch from Convex database
+  // For now, return empty array with user context
+  const userId = req.userId;
+  res.json({
+    dreams: [],
+    total: 0,
+    userId: userId,
+    message: 'Dream list retrieved successfully'
+  });
+});
+
+// POST /api/dreams/upload - Upload dream audio (requires authentication)
+app.post('/api/dreams/upload', requireAuthentication, upload.single('audio'), (req, res) => {
+  const userId = req.userId;
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file provided' });
+  }
+
+  // In a full implementation, this would store in cloud storage and Convex
+  // For now, return success with file info
+  res.json({
+    success: true,
+    userId: userId,
+    file: {
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    },
+    message: 'Dream audio uploaded successfully'
+  });
+});
+
+// GET /api/dreams/:id - Get single dream (requires authentication)
+app.get('/api/dreams/:id', requireAuthentication, (req, res) => {
+  const userId = req.userId;
+  const dreamId = req.params.id;
+
+  // In a full implementation, this would fetch from Convex database
+  res.json({
+    dream: null,
+    userId: userId,
+    dreamId: dreamId,
+    message: 'Dream not found'
+  });
+});
+
+// PATCH /api/dreams/:id - Update dream (requires authentication)
+app.patch('/api/dreams/:id', requireAuthentication, (req, res) => {
+  const userId = req.userId;
+  const dreamId = req.params.id;
+
+  res.json({
+    success: true,
+    userId: userId,
+    dreamId: dreamId,
+    message: 'Dream update endpoint ready'
+  });
+});
+
+// DELETE /api/dreams/:id - Delete dream (requires authentication)
+app.delete('/api/dreams/:id', requireAuthentication, (req, res) => {
+  const userId = req.userId;
+  const dreamId = req.params.id;
+
+  res.json({
+    success: true,
+    userId: userId,
+    dreamId: dreamId,
+    message: 'Dream delete endpoint ready'
+  });
 });
 
 // Transcription endpoint using Groq Whisper
@@ -941,6 +1044,15 @@ app.listen(PORT, () => {
   console.log(`CDT Backend server running on http://localhost:${PORT}`);
   console.log('Available endpoints:');
   console.log('  GET  /api/health       - Health check');
+  console.log('');
+  console.log('Protected endpoints (require Clerk authentication):');
+  console.log('  GET    /api/dreams         - List user dreams');
+  console.log('  POST   /api/dreams/upload  - Upload dream audio');
+  console.log('  GET    /api/dreams/:id     - Get single dream');
+  console.log('  PATCH  /api/dreams/:id     - Update dream');
+  console.log('  DELETE /api/dreams/:id     - Delete dream');
+  console.log('');
+  console.log('Public endpoints:');
   console.log('  POST /api/transcribe   - Transcribe audio to text');
   console.log('  POST /api/analyze      - Analyze dream transcript');
   console.log('  POST /api/process-dream - Combined transcribe + analyze');
