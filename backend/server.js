@@ -135,6 +135,55 @@ async function analyzeEmotionalProsody(audioFilePath) {
   }
 }
 
+// Generate dream image using DALL-E
+async function generateDreamImage(analysis) {
+  try {
+    console.log('Generating dream image with DALL-E...');
+
+    // Create a prompt from the dream analysis
+    const dreamTitle = analysis.overview?.title || 'A dream';
+    const dreamSummary = analysis.overview?.summary || '';
+    const emotionalTone = analysis.overview?.emotionalTone || '';
+    const settings = analysis.manifestContent?.settings?.map(s => s.location).join(', ') || '';
+
+    // Craft a visual prompt based on the dream content
+    const imagePrompt = `Create a dreamlike, surreal digital art image depicting: ${dreamTitle}. ${dreamSummary}
+    The mood is ${emotionalTone}. Settings include: ${settings}.
+    Style: ethereal, soft lighting, atmospheric, dreamlike quality, fantasy art, impressionistic elements,
+    muted color palette with occasional vibrant accents. No text or letters in the image.`.slice(0, 1000);
+
+    console.log('DALL-E prompt:', imagePrompt.substring(0, 100) + '...');
+
+    const response = await openai.images.generate({
+      model: 'dall-e-3',
+      prompt: imagePrompt,
+      n: 1,
+      size: '1024x1024',
+      quality: 'standard',
+      style: 'vivid'
+    });
+
+    const imageUrl = response.data[0]?.url;
+    const revisedPrompt = response.data[0]?.revised_prompt;
+
+    console.log('Dream image generated successfully');
+
+    return {
+      url: imageUrl,
+      prompt: revisedPrompt || imagePrompt,
+      status: 'generated'
+    };
+
+  } catch (error) {
+    console.error('Dream image generation error:', error.message);
+    return {
+      url: null,
+      prompt: 'Image generation failed',
+      status: 'failed'
+    };
+  }
+}
+
 // Extract key emotional insights from Hume predictions
 function extractProsodyInsights(predictions) {
   try {
@@ -633,6 +682,17 @@ Remember:
       });
     }
 
+    // Step 4: Generate dream visualization image with DALL-E
+    console.log('Step 4: Generating dream visualization...');
+    let dreamImage = null;
+    try {
+      dreamImage = await generateDreamImage(analysis);
+      console.log('Dream image generation:', dreamImage.status);
+    } catch (imageError) {
+      console.error('Dream image generation failed (non-blocking):', imageError.message);
+      dreamImage = { url: null, prompt: 'Image generation failed', status: 'failed' };
+    }
+
     console.log('Dream processing complete!');
 
     res.json({
@@ -641,7 +701,8 @@ Remember:
       wordCount: transcript.split(/\s+/).filter(w => w).length,
       recordingDuration: parseInt(duration),
       analysis,
-      prosody: prosodyAnalysis
+      prosody: prosodyAnalysis,
+      dreamImage
     });
 
   } catch (error) {

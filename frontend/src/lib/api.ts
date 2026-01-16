@@ -88,6 +88,12 @@ export interface ProsodyAnalysis {
   hesitationMarkers: Array<{ time: number; emotion: string; intensity: number }>;
 }
 
+export interface DreamImage {
+  url: string | null;
+  prompt: string;
+  status: 'generated' | 'pending' | 'failed';
+}
+
 export interface ProcessDreamResult {
   success: boolean;
   transcript: string;
@@ -95,6 +101,7 @@ export interface ProcessDreamResult {
   recordingDuration: number;
   analysis: DreamAnalysis;
   prosody: ProsodyAnalysis | null;
+  dreamImage: DreamImage | null;
 }
 
 // Health check
