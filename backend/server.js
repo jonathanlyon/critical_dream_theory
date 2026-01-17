@@ -750,9 +750,13 @@ app.patch('/api/test/update-dream/:id', (req, res) => {
 app.get('/api/dreams', requireAuthentication, (req, res) => {
   const userId = req.userId;
 
+  console.log('GET /api/dreams - userId:', userId);
+
   // Get dreams from SQLite
   const rows = db.prepare('SELECT * FROM dreams WHERE userId = ? ORDER BY createdAt DESC').all(userId);
   const userDreams = rows.map(row => serializeDream(row));
+
+  console.log('GET /api/dreams - found', userDreams.length, 'dreams for user', userId);
 
   res.json({
     dreams: userDreams,
@@ -1157,113 +1161,138 @@ app.post('/api/process-dream', upload.single('audio'), async (req, res) => {
     // Step 3: Analyze with OpenAI
     console.log('Step 3: Analyzing dream with CDT framework...');
 
-    const analysisPrompt = `You are a dream analyst trained in Cognitive Dream Theory (CDT), Schredl manifest content coding, and Jungian archetypal frameworks. Analyze the following dream transcript and provide a structured analysis.
+    const wordCount = transcript.split(/\s+/).filter(w => w).length;
+
+    const analysisPrompt = `You are a warm, insightful dream analyst trained in Cognitive Dream Theory (CDT), Schredl manifest content coding, and Jungian archetypal frameworks. Your role is not just to analyze, but to help the dreamer understand the psychological significance of their dream in an accessible, meaningful way.
 
 DREAM TRANSCRIPT:
 ${transcript}
 
 RECORDING DURATION: ${duration} seconds
+WORD COUNT: ${wordCount}
 
-Provide your analysis in the following JSON format (respond ONLY with valid JSON, no markdown):
+Provide a comprehensive, narrative-style analysis in the following JSON format. Write as if you're a thoughtful guide explaining your interpretive process, not generating a clinical report.
+
+Respond ONLY with valid JSON (no markdown code blocks):
 {
   "overview": {
-    "title": "A poetic 3-6 word title for this dream",
-    "emotionalTone": "Brief description of overall emotional quality",
+    "title": "A poetic 3-6 word title capturing the dream's essence",
+    "emotionalTone": "2-3 word emotional quality (e.g., 'Calm and nostalgic', 'Anxious yet hopeful')",
     "dreamType": "One of: Resolution, Replay, Residual, Generative, or Lucid",
     "dreamTypeConfidence": 0.0 to 1.0,
-    "summary": "2-3 sentence summary of the dream's narrative"
+    "summary": "2-3 sentence narrative summary of what happened in the dream",
+    "synthesis": "A 2-3 paragraph insightful analysis (150-250 words) that weaves together findings from all analytical frameworks. This should feel like sitting with a thoughtful analyst who explains what stands out about this dream, how the emotional content connects to the imagery, what the dream might be processing psychologically, and what makes this dream personally meaningful. Avoid clinical language. Write warmly and accessibly while maintaining psychological depth. Reference specific images and moments from the dream.",
+    "keyInsights": [
+      "First key takeaway - a specific, actionable insight about what this dream reveals",
+      "Second key takeaway - another meaningful observation connecting dream content to psychological themes",
+      "Third key takeaway - a reflection point or pattern worth noticing"
+    ]
   },
   "manifestContent": {
+    "sectionContext": "The manifest content is what you actually experienced in the dream - the characters, places, and events. Analyzing these elements helps us understand what your mind chose to weave into this particular narrative.",
     "characters": [
-      {"name": "character name", "role": "their role in dream", "familiarity": "Familiar/Unfamiliar/Self"}
+      {"name": "character name", "role": "their role/relationship in dream", "familiarity": "Familiar/Unfamiliar/Self", "significance": "Brief note on why this person may have appeared"}
     ],
     "settings": [
-      {"location": "setting description", "familiarity": "Familiar/Unfamiliar/Hybrid"}
+      {"location": "setting description", "familiarity": "Familiar/Unfamiliar/Hybrid", "atmosphere": "The emotional quality of this space"}
     ],
-    "actions": ["list of key actions"],
+    "actions": ["list of key actions that occurred"],
     "emotions": [
-      {"emotion": "emotion name", "intensity": 1-5, "context": "when this emotion appeared"}
+      {"emotion": "emotion name", "intensity": 1-5, "context": "when/where this emotion appeared"}
     ],
+    "emotionalLandscapeInterpretation": "2-3 sentences explaining what this particular combination of emotions suggests about the dream's psychological territory. What does it mean that these specific feelings appeared together?",
     "schredlScales": {
-      "dreamLength": {"value": ${transcript.split(/\s+/).filter(w => w).length}, "label": "Short/Medium/Long", "interpretation": "brief explanation"},
-      "realism": {"value": 1-5, "label": "Realistic to Bizarre", "interpretation": "explanation"},
-      "emotionalIntensityPositive": {"value": 0-5, "label": "intensity label", "interpretation": "explanation"},
-      "emotionalIntensityNegative": {"value": 0-5, "label": "intensity label", "interpretation": "explanation"},
-      "clarity": {"value": 1-5, "label": "clarity label", "interpretation": "explanation"},
-      "selfParticipation": {"value": 1-5, "label": "participation level", "interpretation": "explanation"},
-      "socialDensity": {"value": 1-5, "label": "density label", "interpretation": "explanation"},
-      "agency": {"value": 1-5, "label": "agency level", "interpretation": "explanation"},
-      "narrativeCoherence": {"value": 1-5, "label": "coherence level", "interpretation": "explanation"}
+      "dreamLength": {"value": ${wordCount}, "label": "Short/Medium/Long based on word count", "interpretation": "What this length suggests about dream recall and processing depth"},
+      "realism": {"value": 1-5, "label": "Realistic/Somewhat Surreal/Bizarre", "interpretation": "Explain what this level of realism might indicate about the dream's function"},
+      "emotionalIntensityPositive": {"value": 0-5, "label": "None/Low/Moderate/High/Very High", "interpretation": "What the positive emotional intensity reveals"},
+      "emotionalIntensityNegative": {"value": 0-5, "label": "None/Low/Moderate/High/Very High", "interpretation": "What the negative emotional intensity reveals"},
+      "clarity": {"value": 1-5, "label": "Vague/Somewhat Clear/Clear/Very Clear/Vivid", "interpretation": "What dream clarity suggests about memory consolidation"},
+      "selfParticipation": {"value": 1-5, "label": "Observer/Mostly Observing/Balanced/Active Participant/Central Actor", "interpretation": "What your level of participation indicates"},
+      "socialDensity": {"value": 1-5, "label": "Solitary/Few Others/Moderate/Populated/Crowded", "interpretation": "What the social density suggests about current relational focus"},
+      "agency": {"value": 1-5, "label": "Passive/Limited/Moderate/Significant/Full Control", "interpretation": "What your sense of agency in the dream might reflect"},
+      "narrativeCoherence": {"value": 1-5, "label": "Fragmented/Loosely Connected/Coherent/Very Coherent/Perfectly Linear", "interpretation": "What narrative coherence indicates about the dream's integrative work"}
     }
   },
   "cdtAnalysis": {
+    "sectionContext": "Cognitive Dream Theory views dreams as the mind's way of processing experiences and integrating memories. This section examines how your dream draws from your memory 'vault' and what themes your sleeping mind was working through.",
     "vaultActivation": {
-      "assessment": "Overall assessment of memory activation",
-      "recentMemories": ["list of recent memory indicators"],
-      "distantMemories": ["list of distant memory indicators"],
-      "interpretation": "What this pattern might suggest"
+      "assessment": "Overall assessment of how the dream activated your memory systems",
+      "recentMemories": ["specific recent memory elements visible in the dream"],
+      "distantMemories": ["older memory elements or long-standing themes present"],
+      "interpretation": "2-3 sentences on what this pattern of memory activation suggests about what your mind is currently integrating"
     },
     "cognitiveDrift": {
       "themes": [
-        {"theme": "drift theme name", "confidence": 0.0 to 1.0}
+        {"theme": "primary drift theme", "confidence": 0.0 to 1.0, "explanation": "How this theme manifested in the dream imagery"}
       ],
-      "interpretation": "What the drift patterns suggest"
+      "interpretation": "2-3 sentences explaining what these cognitive drift patterns reveal about your current psychological focus and emotional processing"
     },
     "convergenceIndicators": {
-      "present": true/false,
-      "evidence": "Evidence for convergence or lack thereof",
-      "resolutionType": "Type of resolution if present"
+      "present": true or false,
+      "evidence": "Specific evidence from the dream supporting this assessment",
+      "resolutionType": "If convergence present, what type of psychological resolution occurred",
+      "meaning": "What the presence or absence of convergence suggests about the dream's work"
     },
-    "dreamTypeRationale": "Explanation for the dream type classification"
+    "dreamTypeExplanation": "2-3 sentences explaining what '${transcript.includes('lucid') ? 'Lucid' : 'this type of'}' dreams represent in CDT and why this dream fits that classification. Help the dreamer understand what this categorization means for interpreting their experience.",
+    "dreamTypeRationale": "Specific elements from the dream that led to this classification"
   },
   "archetypalResonances": {
-    "threshold": {
-      "present": true/false,
-      "elements": ["elements suggesting threshold"],
-      "reflection": "What this might reflect"
+    "sectionContext": "Jungian archetypes are universal patterns in the human psyche that appear across cultures and throughout history. When archetypal themes emerge in dreams, they often signal that we're engaging with fundamental life transitions or psychological developments. These patterns are offered as lenses for reflection, not definitive interpretations.",
+    "primaryArchetype": {
+      "name": "The primary archetypal pattern present (e.g., 'The Self', 'The Threshold', 'The Shadow', 'Anima/Animus', 'The Hero's Journey')",
+      "description": "2-3 sentences explaining what this archetype represents universally in human psychology",
+      "manifestation": "How this archetype specifically appeared in the dream's imagery and narrative",
+      "reflection": "A thoughtful exploration of what engaging with this archetype at this time might suggest. Frame as possibility, not diagnosis.",
+      "elements": ["specific dream elements that evoke this archetype"]
     },
-    "shadow": {
-      "present": true/false,
-      "elements": ["shadow elements if present"],
-      "reflection": "What this might reflect"
-    },
-    "animaAnimus": {
-      "present": true/false,
-      "elements": ["anima/animus elements if present"],
-      "reflection": "What this might reflect"
-    },
-    "selfWholeness": {
-      "present": true/false,
-      "elements": ["self/wholeness elements if present"],
-      "reflection": "What this might reflect"
-    },
+    "secondaryPatterns": [
+      {
+        "name": "Secondary archetypal theme if present",
+        "briefDescription": "1-2 sentences on how this pattern appeared and what it might add to the interpretation"
+      }
+    ],
     "scenarios": [
-      {"name": "Archetypal scenario name", "description": "Brief description"}
+      {"name": "Archetypal scenario name (e.g., 'Lovers' Embrace', 'The Night Sea Journey')", "description": "What this universal scenario represents and how it manifested in this dream"}
     ]
   },
   "reflectivePrompts": [
     {
-      "category": "Exploration/Emotional/Action-oriented/Integration",
-      "prompt": "The reflective question",
-      "dreamConnection": "Which part of the dream this relates to"
+      "category": "Emotional",
+      "prompt": "A specific, grounded question about the emotions in this dream",
+      "dreamConnection": "The specific imagery or moment this question relates to",
+      "whyThisMatters": "Brief note on why exploring this could be valuable"
+    },
+    {
+      "category": "Exploration",
+      "prompt": "A question inviting curiosity about the dream's symbols or settings",
+      "dreamConnection": "The specific element this explores",
+      "whyThisMatters": "Why this element is worth sitting with"
+    },
+    {
+      "category": "Integration",
+      "prompt": "A question connecting the dream to waking life",
+      "dreamConnection": "How this bridges dream and waking experience",
+      "whyThisMatters": "The potential value of this integration"
     }
   ]
 }
 
-Remember:
-- Use non-prescriptive language ("may reflect", "could relate to", "might suggest")
-- Keep the dreamer as the final authority on meaning
-- Ground interpretations in CDT/Schredl/Jungian frameworks
-- Be warm, insightful, and psychologically sophisticated`;
+IMPORTANT GUIDELINES:
+- Write the synthesis as a cohesive narrative, not bullet points. It should feel like thoughtful reflection, not data summary.
+- Every interpretation should use non-prescriptive language ("may reflect", "could suggest", "might indicate")
+- The dreamer is the final authority on their dream's meaning - offer perspectives, not pronouncements
+- Reference specific images, characters, and moments from the dream throughout
+- Balance psychological depth with accessibility - avoid jargon, explain concepts naturally
+- The tone should be warm, curious, and genuinely interested in the dream's meaning`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
-        { role: 'system', content: 'You are a dream analyst. Respond only with valid JSON, no markdown code blocks.' },
+        { role: 'system', content: 'You are a warm, insightful dream analyst who helps people understand their dreams. Respond only with valid JSON, no markdown code blocks. Your analysis should feel like a thoughtful conversation, not a clinical report.' },
         { role: 'user', content: analysisPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 4000,
+      max_tokens: 6000,
     });
 
     const responseText = completion.choices[0].message.content;

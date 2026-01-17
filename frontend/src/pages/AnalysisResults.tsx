@@ -208,16 +208,22 @@ interface AnalysisData {
     dreamTypeConfidence: number;
     title: string;
     summary: string;
+    // Enhanced fields
+    synthesis?: string;
+    keyInsights?: string[];
   };
   transcript: string;
   manifestContent: {
-    characters: Array<{ name: string; role: string; familiarity: string }>;
-    settings: Array<{ location: string; familiarity: string }>;
+    sectionContext?: string;
+    characters: Array<{ name: string; role: string; familiarity: string; significance?: string }>;
+    settings: Array<{ location: string; familiarity: string; atmosphere?: string }>;
     actions: string[];
     emotions: Array<{ emotion: string; intensity: number; context: string }>;
+    emotionalLandscapeInterpretation?: string;
     schredlScales: Record<string, { value: number | string; label: string; interpretation: string }>;
   };
   cdtAnalysis: {
+    sectionContext?: string;
     vaultActivation: {
       assessment: string;
       recentMemories: string[];
@@ -225,24 +231,42 @@ interface AnalysisData {
       interpretation: string;
     };
     cognitiveDrift: {
-      themes: Array<{ theme: string; confidence: number }>;
+      themes: Array<{ theme: string; confidence: number; explanation?: string }>;
       interpretation: string;
     };
     convergenceIndicators: {
       present: boolean;
       evidence: string;
       resolutionType: string;
+      meaning?: string;
     };
     dreamTypeRationale: string;
+    dreamTypeExplanation?: string;
   };
   archetypalResonances: {
-    threshold: { present: boolean; elements: string[]; reflection: string | null };
-    shadow: { present: boolean; elements: string[]; reflection: string | null };
-    animaAnimus: { present: boolean; elements: string[]; reflection: string | null };
-    selfWholeness: { present: boolean; elements: string[]; reflection: string | null };
+    sectionContext?: string;
+    // Legacy fields
+    threshold?: { present: boolean; elements: string[]; reflection: string | null };
+    shadow?: { present: boolean; elements: string[]; reflection: string | null };
+    animaAnimus?: { present: boolean; elements: string[]; reflection: string | null };
+    selfWholeness?: { present: boolean; elements: string[]; reflection: string | null };
+    // Enhanced fields
+    primaryArchetype?: {
+      name: string;
+      description: string;
+      manifestation: string;
+      reflection: string;
+      elements: string[];
+    };
+    secondaryPatterns?: Array<{ name: string; briefDescription: string }>;
     scenarios: Array<{ name: string; description: string }>;
   };
-  reflectivePrompts: Array<{ category: string; prompt: string; dreamConnection: string }>;
+  reflectivePrompts: Array<{
+    category: string;
+    prompt: string;
+    dreamConnection: string;
+    whyThisMatters?: string;
+  }>;
   dreamImage: { url: string | null; prompt: string; status: string };
   prosody?: {
     dominantEmotions: Array<{ emotion: string; intensity: number }>;
@@ -838,6 +862,39 @@ export default function AnalysisResults() {
               )}
               <p className="text-gray-400 mb-4">{analysis.overview.summary}</p>
 
+              {/* Enhanced Synthesis */}
+              {analysis.overview.synthesis && (
+                <div className="mb-6 p-4 rounded-lg bg-gradient-to-br from-primary-900/20 to-secondary-900/20 border border-primary-800/30">
+                  <h3 className="text-sm font-semibold text-primary-300 mb-2 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    Analytical Synthesis
+                  </h3>
+                  <p className="text-gray-300 leading-relaxed whitespace-pre-line">{analysis.overview.synthesis}</p>
+                </div>
+              )}
+
+              {/* Key Insights */}
+              {analysis.overview.keyInsights && analysis.overview.keyInsights.length > 0 && (
+                <div className="mb-6 p-4 rounded-lg bg-accent-900/20 border border-accent-800/30">
+                  <h3 className="text-sm font-semibold text-accent-300 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Key Insights
+                  </h3>
+                  <ul className="space-y-2">
+                    {analysis.overview.keyInsights.map((insight, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-gray-300">
+                        <span className="text-accent-400 mt-1">•</span>
+                        <span>{insight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-4 text-sm text-gray-500">
                 <span className="flex items-center gap-1">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -985,6 +1042,13 @@ export default function AnalysisResults() {
           </button>
           {expandedSections.has('manifest') && (
             <div className="mt-4 space-y-6">
+              {/* Section Context */}
+              {analysis.manifestContent.sectionContext && (
+                <p className="text-sm text-gray-400 italic border-l-2 border-primary-600/50 pl-3">
+                  {analysis.manifestContent.sectionContext}
+                </p>
+              )}
+
               {/* Characters */}
               <div>
                 <h3 className="text-sm font-medium text-gray-300 mb-2">Characters</h3>
@@ -1032,6 +1096,12 @@ export default function AnalysisResults() {
                     </div>
                   ))}
                 </div>
+                {/* Emotional Landscape Interpretation */}
+                {analysis.manifestContent.emotionalLandscapeInterpretation && (
+                  <p className="mt-3 text-sm text-gray-400 italic p-3 bg-primary-900/10 rounded-lg border border-primary-800/20">
+                    {analysis.manifestContent.emotionalLandscapeInterpretation}
+                  </p>
+                )}
               </div>
 
               {/* Schredl Scales */}
@@ -1070,6 +1140,13 @@ export default function AnalysisResults() {
           </button>
           {expandedSections.has('cdt') && (
             <div className="mt-4 space-y-6">
+              {/* Section Context */}
+              {analysis.cdtAnalysis.sectionContext && (
+                <p className="text-sm text-gray-400 italic border-l-2 border-primary-600/50 pl-3">
+                  {analysis.cdtAnalysis.sectionContext}
+                </p>
+              )}
+
               {/* Vault Activation */}
               <div className="p-4 bg-dream-darker rounded-lg">
                 <h3 className="text-sm font-medium text-gray-300 mb-2">Memory Vault Activation</h3>
@@ -1098,6 +1175,12 @@ export default function AnalysisResults() {
                     </ul>
                   </div>
                 </div>
+                {/* Vault Activation Interpretation */}
+                {analysis.cdtAnalysis.vaultActivation.interpretation && (
+                  <p className="mt-3 text-sm text-gray-400 italic pt-3 border-t border-dream-border">
+                    {analysis.cdtAnalysis.vaultActivation.interpretation}
+                  </p>
+                )}
               </div>
 
               {/* Cognitive Drift */}
@@ -1123,8 +1206,31 @@ export default function AnalysisResults() {
               {/* Dream Type Rationale */}
               <div className="p-4 bg-dream-darker rounded-lg">
                 <h3 className="text-sm font-medium text-gray-300 mb-2">Dream Classification Rationale</h3>
-                <p className="text-sm text-gray-400">{analysis.cdtAnalysis.dreamTypeRationale}</p>
+                {/* Dream Type Explanation - what this type means */}
+                {analysis.cdtAnalysis.dreamTypeExplanation && (
+                  <p className="text-sm text-gray-300 mb-3">{analysis.cdtAnalysis.dreamTypeExplanation}</p>
+                )}
+                <p className="text-sm text-gray-400 italic">{analysis.cdtAnalysis.dreamTypeRationale}</p>
               </div>
+
+              {/* Convergence Indicators */}
+              {analysis.cdtAnalysis.convergenceIndicators && (
+                <div className="p-4 bg-dream-darker rounded-lg">
+                  <h3 className="text-sm font-medium text-gray-300 mb-2">Convergence Analysis</h3>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`px-2 py-1 text-xs rounded-full ${analysis.cdtAnalysis.convergenceIndicators.present ? 'bg-green-900/30 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+                      {analysis.cdtAnalysis.convergenceIndicators.present ? 'Convergence Present' : 'No Clear Convergence'}
+                    </span>
+                    {analysis.cdtAnalysis.convergenceIndicators.resolutionType && (
+                      <span className="text-xs text-gray-500">{analysis.cdtAnalysis.convergenceIndicators.resolutionType}</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-400">{analysis.cdtAnalysis.convergenceIndicators.evidence}</p>
+                  {analysis.cdtAnalysis.convergenceIndicators.meaning && (
+                    <p className="text-sm text-gray-400 italic mt-2">{analysis.cdtAnalysis.convergenceIndicators.meaning}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -1142,12 +1248,57 @@ export default function AnalysisResults() {
           </button>
           {expandedSections.has('archetypal') && (
             <div className="mt-4 space-y-4">
-              <p className="text-sm text-gray-500 italic">
-                These archetypal patterns are offered as possible lenses for reflection, not definitive interpretations.
-              </p>
+              {/* Section Context */}
+              {analysis.archetypalResonances.sectionContext ? (
+                <p className="text-sm text-gray-400 italic border-l-2 border-primary-600/50 pl-3">
+                  {analysis.archetypalResonances.sectionContext}
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 italic">
+                  These archetypal patterns are offered as possible lenses for reflection, not definitive interpretations.
+                </p>
+              )}
 
-              {/* Threshold */}
-              {analysis.archetypalResonances.threshold.present && (
+              {/* Primary Archetype (Enhanced format) */}
+              {analysis.archetypalResonances.primaryArchetype && (
+                <div className="p-4 bg-gradient-to-br from-primary-900/30 to-secondary-900/30 rounded-lg border border-primary-700/30">
+                  <h3 className="text-base font-semibold text-primary-300 mb-2">{analysis.archetypalResonances.primaryArchetype.name}</h3>
+                  <p className="text-sm text-gray-300 mb-3">{analysis.archetypalResonances.primaryArchetype.description}</p>
+
+                  <div className="mb-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">How it appeared in your dream</p>
+                    <p className="text-sm text-gray-300">{analysis.archetypalResonances.primaryArchetype.manifestation}</p>
+                  </div>
+
+                  {analysis.archetypalResonances.primaryArchetype.elements.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {analysis.archetypalResonances.primaryArchetype.elements.map((el, i) => (
+                        <span key={i} className="px-2 py-1 text-xs bg-primary-500/20 rounded text-primary-300">{el}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-primary-700/30">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Reflection</p>
+                    <p className="text-sm text-gray-400 italic">{analysis.archetypalResonances.primaryArchetype.reflection}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Secondary Patterns */}
+              {analysis.archetypalResonances.secondaryPatterns && analysis.archetypalResonances.secondaryPatterns.length > 0 && (
+                <div className="space-y-2">
+                  {analysis.archetypalResonances.secondaryPatterns.map((pattern, i) => (
+                    <div key={i} className="p-3 bg-dream-darker rounded-lg border-l-2 border-secondary-500/50">
+                      <p className="text-sm font-medium text-secondary-300">{pattern.name}</p>
+                      <p className="text-xs text-gray-400 mt-1">{pattern.briefDescription}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Legacy format: Threshold */}
+              {!analysis.archetypalResonances.primaryArchetype && analysis.archetypalResonances.threshold?.present && (
                 <div className="p-4 bg-dream-darker rounded-lg border-l-4 border-primary-500">
                   <h3 className="text-sm font-medium text-primary-300 mb-2">Threshold / Transition</h3>
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -1159,8 +1310,8 @@ export default function AnalysisResults() {
                 </div>
               )}
 
-              {/* Self/Wholeness */}
-              {analysis.archetypalResonances.selfWholeness.present && (
+              {/* Legacy format: Self/Wholeness */}
+              {!analysis.archetypalResonances.primaryArchetype && analysis.archetypalResonances.selfWholeness?.present && (
                 <div className="p-4 bg-dream-darker rounded-lg border-l-4 border-secondary-500">
                   <h3 className="text-sm font-medium text-secondary-300 mb-2">Self / Integration</h3>
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -1173,16 +1324,16 @@ export default function AnalysisResults() {
               )}
 
               {/* Archetypal Scenarios */}
-              {analysis.archetypalResonances.scenarios.length > 0 && (
+              {analysis.archetypalResonances.scenarios && analysis.archetypalResonances.scenarios.length > 0 && (
                 <div className="p-4 bg-dream-darker rounded-lg">
                   <h3 className="text-sm font-medium text-gray-300 mb-3">Resonant Archetypal Scenarios</h3>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {analysis.archetypalResonances.scenarios.map((scenario, i) => (
                       <div key={i} className="flex items-start gap-3">
-                        <span className="text-lg">{'   '}</span>
+                        <span className="text-lg text-primary-400">◆</span>
                         <div>
                           <p className="text-sm font-medium text-gray-300">{scenario.name}</p>
-                          <p className="text-xs text-gray-500">{scenario.description}</p>
+                          <p className="text-xs text-gray-500 mt-1">{scenario.description}</p>
                         </div>
                       </div>
                     ))}
@@ -1205,6 +1356,11 @@ export default function AnalysisResults() {
                 <span className="text-xs text-primary-400 uppercase tracking-wide">{prompt.category}</span>
                 <p className="text-gray-300 mt-1 mb-2">{prompt.prompt}</p>
                 <p className="text-xs text-gray-500">Related to: {prompt.dreamConnection}</p>
+                {prompt.whyThisMatters && (
+                  <p className="text-xs text-gray-500 mt-2 italic border-t border-dream-border pt-2">
+                    Why this matters: {prompt.whyThisMatters}
+                  </p>
+                )}
               </div>
             ))}
           </div>

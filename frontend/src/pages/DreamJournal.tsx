@@ -519,9 +519,17 @@ export default function DreamJournal() {
                     </div>
                   )}
 
-                  {/* Thumbnail with gradient and icon */}
+                  {/* Thumbnail with dream image or gradient fallback */}
                   <div className={`aspect-video bg-gradient-to-br ${dream.thumbnailGradient} rounded-lg mb-4 overflow-hidden flex items-center justify-center grayscale`}>
-                    <span className="text-5xl opacity-80">{dream.thumbnailIcon}</span>
+                    {dream.dreamImage?.url ? (
+                      <img
+                        src={dream.dreamImage.url}
+                        alt={dream.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-5xl opacity-80">{dream.thumbnailIcon}</span>
+                    )}
                   </div>
 
                   {/* Title and Type Badge */}
@@ -638,9 +646,17 @@ export default function DreamJournal() {
                   </div>
                 )}
 
-                {/* Thumbnail with gradient and icon */}
+                {/* Thumbnail with dream image or gradient fallback */}
                 <div className={`aspect-video bg-gradient-to-br ${dream.thumbnailGradient} rounded-lg mb-4 overflow-hidden flex items-center justify-center relative`}>
-                  <span className="text-5xl opacity-80">{dream.thumbnailIcon}</span>
+                  {dream.dreamImage?.url ? (
+                    <img
+                      src={dream.dreamImage.url}
+                      alt={dream.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-5xl opacity-80">{dream.thumbnailIcon}</span>
+                  )}
                   {/* Archive button on hover */}
                   <button
                     className="absolute top-2 right-2 p-2 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
