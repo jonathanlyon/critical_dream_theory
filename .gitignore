@@ -58,6 +58,10 @@ workbox-*.js
 # Features database (managed by MCP server)
 features.db
 
+# Backend data (user dreams and uploads)
+backend/dreams.db
+backend/uploads/
+
 # Agent files
 .agent.lock
 claude-progress.txt

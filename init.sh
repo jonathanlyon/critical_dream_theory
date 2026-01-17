@@ -60,14 +60,26 @@ else
     echo -e "${YELLOW}! Frontend not yet initialized - skipping${NC}"
 fi
 
-# Install Convex (backend) dependencies
+# Install Convex dependencies
 echo ""
-echo -e "${YELLOW}Installing backend dependencies...${NC}"
+echo -e "${YELLOW}Installing Convex dependencies...${NC}"
 if [ -d "convex" ] && [ -f "package.json" ]; then
     npm install
     echo -e "${GREEN}✓ Convex dependencies installed${NC}"
 else
     echo -e "${YELLOW}! Convex not yet initialized - skipping${NC}"
+fi
+
+# Install Express backend dependencies
+echo ""
+echo -e "${YELLOW}Installing Express backend dependencies...${NC}"
+if [ -d "backend" ] && [ -f "backend/package.json" ]; then
+    cd backend
+    npm install
+    cd ..
+    echo -e "${GREEN}✓ Express backend dependencies installed${NC}"
+else
+    echo -e "${YELLOW}! Express backend not yet initialized - skipping${NC}"
 fi
 
 # Check for environment variables
@@ -118,12 +130,27 @@ start_services() {
     echo -e "${BLUE}Starting development servers...${NC}"
     echo ""
 
-    # Start Convex backend (if configured)
+    # Track PIDs for cleanup
+    PIDS=""
+
+    # Start Convex (if configured)
     if [ -f "package.json" ] && grep -q "convex" "package.json" 2>/dev/null; then
-        echo -e "${YELLOW}Starting Convex backend...${NC}"
+        echo -e "${YELLOW}Starting Convex...${NC}"
         npx convex dev &
         CONVEX_PID=$!
-        echo -e "${GREEN}✓ Convex backend starting (PID: $CONVEX_PID)${NC}"
+        PIDS="$PIDS $CONVEX_PID"
+        echo -e "${GREEN}✓ Convex starting (PID: $CONVEX_PID)${NC}"
+    fi
+
+    # Start Express backend
+    if [ -d "backend" ] && [ -f "backend/package.json" ]; then
+        echo -e "${YELLOW}Starting Express backend...${NC}"
+        cd backend
+        npm run dev &
+        BACKEND_PID=$!
+        PIDS="$PIDS $BACKEND_PID"
+        cd ..
+        echo -e "${GREEN}✓ Express backend starting (PID: $BACKEND_PID)${NC}"
     fi
 
     # Start frontend
@@ -132,6 +159,7 @@ start_services() {
         cd frontend
         npm run dev &
         FRONTEND_PID=$!
+        PIDS="$PIDS $FRONTEND_PID"
         cd ..
         echo -e "${GREEN}✓ Frontend starting (PID: $FRONTEND_PID)${NC}"
     fi
@@ -141,13 +169,14 @@ start_services() {
     echo -e "${GREEN}║                    Development Servers                     ║${NC}"
     echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${GREEN}║  Frontend:  http://localhost:5173                          ║${NC}"
-    echo -e "${GREEN}║  Convex:    Check Convex dashboard for backend URL         ║${NC}"
+    echo -e "${GREEN}║  Backend:   http://localhost:3001                          ║${NC}"
+    echo -e "${GREEN}║  Convex:    Check Convex dashboard for real-time sync      ║${NC}"
     echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${GREEN}║  Press Ctrl+C to stop all servers                          ║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 
     # Wait for interrupt
-    trap "echo -e '\n${YELLOW}Stopping servers...${NC}'; kill $CONVEX_PID $FRONTEND_PID 2>/dev/null; exit 0" SIGINT SIGTERM
+    trap "echo -e '\n${YELLOW}Stopping servers...${NC}'; kill $PIDS 2>/dev/null; exit 0" SIGINT SIGTERM
     wait
 }
 
@@ -179,10 +208,11 @@ case "${1:-}" in
         echo "  2. Run './init.sh start' to start development servers"
         echo ""
         echo "Technology Stack:"
-        echo "  • Frontend: React PWA with TailwindCSS"
-        echo "  • Backend: Convex (serverless, real-time)"
+        echo "  • Frontend: React PWA with TailwindCSS (port 5173)"
+        echo "  • Backend: Express + SQLite (port 3001)"
+        echo "  • Real-time: Convex (serverless)"
         echo "  • Auth: Clerk"
-        echo "  • APIs: Groq/Whisper, Hume, Gemini, OpenAI, Stripe"
+        echo "  • APIs: Groq/Whisper, Hume, OpenAI/DALL-E, Stripe"
         echo ""
         ;;
 esac

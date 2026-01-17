@@ -381,8 +381,11 @@ export default function AnalysisResults() {
           sessionStorage.getItem('dreamAudioType') // Clear on retrieval
 
           if (!base64Audio) {
-            throw new Error('No audio recording found')
+            console.error('sessionStorage dreamAudioBlob is empty. hasAudioBlob was true but no data found.')
+            throw new Error('No audio recording found. The recording may have been lost during navigation. Please go back and record again.')
           }
+
+          console.log(`Retrieved audio from sessionStorage: ${(base64Audio.length / (1024 * 1024)).toFixed(2)} MB`)
 
           // Convert base64 back to blob
           const response = await fetch(base64Audio)
@@ -635,6 +638,8 @@ export default function AnalysisResults() {
 
   // Error view
   if (processingError) {
+    const isAudioNotFoundError = processingError.includes('No audio recording found')
+
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-md text-center">
@@ -644,13 +649,19 @@ export default function AnalysisResults() {
             </svg>
           </div>
           <h2 className="text-xl font-semibold mb-2">Analysis Failed</h2>
-          <p className="text-gray-400 mb-6">{processingError}</p>
+          <p className="text-gray-400 mb-4">{processingError}</p>
+          {isAudioNotFoundError && (
+            <p className="text-sm text-gray-500 mb-6">
+              This can happen if the browser cleared temporary data or if the recording was too large.
+              Please try recording again with a shorter duration if the issue persists.
+            </p>
+          )}
           <div className="flex gap-4 justify-center">
             <button
               onClick={() => navigate('/analysis')}
               className="btn-primary"
             >
-              Try Again
+              {isAudioNotFoundError ? 'Record Again' : 'Try Again'}
             </button>
             <button
               onClick={() => navigate('/journal')}

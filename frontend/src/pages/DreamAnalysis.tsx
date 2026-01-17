@@ -572,19 +572,67 @@ export default function DreamAnalysis() {
             // Store audio blob in sessionStorage for the results page to retrieve
             // We need to convert to base64 for storage
             const reader = new FileReader()
+
+            reader.onerror = () => {
+              console.error('FileReader error:', reader.error)
+              setIsAnalyzing(false)
+              analyzeClickedRef.current = false
+              alert('Failed to process audio recording. Please try recording again.')
+            }
+
             reader.onloadend = () => {
               const base64Audio = reader.result as string
-              sessionStorage.setItem('dreamAudioBlob', base64Audio)
-              sessionStorage.setItem('dreamAudioType', audioBlob.type)
 
-              // Navigate to analysis results with recording duration
-              navigate('/analysis/results', {
-                state: {
-                  fromRecording: true,
-                  recordingDurationSeconds: recordingTime,
-                  hasAudioBlob: true
+              if (!base64Audio) {
+                console.error('FileReader produced empty result')
+                setIsAnalyzing(false)
+                analyzeClickedRef.current = false
+                alert('Failed to process audio recording. Please try recording again.')
+                return
+              }
+
+              try {
+                // Check approximate size (base64 is ~1.37x larger than original)
+                const sizeInMB = base64Audio.length / (1024 * 1024)
+                console.log(`Audio size: ${sizeInMB.toFixed(2)} MB`)
+
+                if (sizeInMB > 4.5) {
+                  // sessionStorage limit is typically 5MB
+                  console.warn('Audio may be too large for sessionStorage')
                 }
-              })
+
+                sessionStorage.setItem('dreamAudioBlob', base64Audio)
+                sessionStorage.setItem('dreamAudioType', audioBlob.type)
+
+                // Verify the data was stored
+                const stored = sessionStorage.getItem('dreamAudioBlob')
+                if (!stored) {
+                  throw new Error('Audio data was not stored successfully')
+                }
+
+                // Navigate to analysis results with recording duration
+                navigate('/analysis/results', {
+                  state: {
+                    fromRecording: true,
+                    recordingDurationSeconds: recordingTime,
+                    hasAudioBlob: true
+                  }
+                })
+              } catch (error) {
+                console.error('Failed to store audio in sessionStorage:', error)
+                setIsAnalyzing(false)
+                analyzeClickedRef.current = false
+
+                // Check if it's a quota error
+                const isQuotaError = error instanceof DOMException &&
+                  (error.name === 'QuotaExceededError' || error.code === 22)
+
+                if (isQuotaError) {
+                  alert('Recording is too large to process. Please try a shorter recording (under 2 minutes).')
+                } else {
+                  alert('Failed to save audio recording. Please try again.')
+                }
+              }
             }
             reader.readAsDataURL(audioBlob)
           }}

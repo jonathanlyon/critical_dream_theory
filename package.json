@@ -1,9 +1,14 @@
 {
-  "name": "cdt-backend",
+  "name": "cognitive-dream-theory",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "convex dev"
+    "dev": "echo 'Use ./init.sh start to run all servers, or run each separately:' && echo '  npm run dev:convex   - Convex real-time sync' && echo '  npm run dev:backend  - Express API server' && echo '  npm run dev:frontend - React frontend'",
+    "dev:convex": "convex dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "start": "./init.sh start"
   },
   "dependencies": {
     "convex": "^1.10.0"
