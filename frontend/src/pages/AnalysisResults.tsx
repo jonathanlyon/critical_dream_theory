@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
-import { processDream, getDream, updateDream } from '../lib/api'
+import { processDreamWithAuth, getDream, updateDream } from '../lib/api'
 
 // Account storage key (same as Account.tsx)
 const ACCOUNT_KEY = 'cdt_user_account'
@@ -399,9 +399,10 @@ export default function AnalysisResults() {
           // Start processing with API
           setCurrentStep(0)
 
-          // Call the API to process the dream
+          // Call the API to process the dream (with authentication)
           console.log('Processing dream with API...')
-          const result = await processDream(blob, recordingDurationSeconds, (step, progress) => {
+          const token = await getToken()
+          const result = await processDreamWithAuth(blob, recordingDurationSeconds, token || undefined, (step, progress) => {
             console.log('Progress:', step, progress)
             if (step.includes('Uploading')) setCurrentStep(0)
           })
@@ -416,7 +417,7 @@ export default function AnalysisResults() {
 
           // Convert API result to our analysis format
           const analysisData: AnalysisData = {
-            dreamId: 'dream_' + Date.now(),
+            dreamId: result.dreamId || 'dream_' + Date.now(),
             createdAt: new Date().toISOString(),
             recordingDuration: result.recordingDuration || recordingDurationSeconds,
             wordCount: result.wordCount,
@@ -435,6 +436,8 @@ export default function AnalysisResults() {
           }
 
           setAnalysis(analysisData)
+          setLoadedDreamId(result.dreamId || null)
+          setEditedTitle(result.analysis.overview.title || 'Untitled Dream')
           setIsProcessing(false)
 
           // Update minutes used
